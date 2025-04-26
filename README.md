@@ -66,7 +66,7 @@ The system prioritizes backend intelligence, security, modularity, and voice-dri
 **Installation Steps**
 1) Clone the Repository
 ```bash
-git clone https://github.com/your-username/vaani-sentinel-x.git
+(https://github.com/karthikeya-vppcoe/vaani-sentinel-x.git)
 cd vaani-sentinel-x
 ```
 2) Set Up Environment Variables
