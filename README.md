@@ -81,6 +81,7 @@ PORT=5000
 SECRET_KEY=your-secret-key
 ```
 3) Install Backend Dependencies
+   Remember to install this in your root ```(vaani-sentinel-x/)``` and if any error's encontered create a new venv if your one is corrupted and reinstall the dependecies
 ```pip install requests textblob python-dotenv gtts groq datetime better_profanity cryptography.fernet ```
 - And if there are still any missing to install,install them
 
