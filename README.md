@@ -144,6 +144,9 @@ You can run the whole pipeline via CLI commands:
 | 403 Forbidden Errors | Publisher used a mock token; fixed by updating `publisher_sim.py` to request a real JWT token via /api/login.|
 | Audio Playback/Download Fails |Updated `ContentPanel.tsx` to correctly attach JWT tokens to download/play requests.|
 
+# A video demo (screen recording, 3–5 min) 
+- [Demo_vedio](https://github.com/karthikeya-vppcoe)
+
 ## 🚀 Future Improvements
 - Replace SQLite with PostgreSQL for production-grade scalability.
 - Add a "Run Full Pipeline" button in the frontend.
