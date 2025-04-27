@@ -146,7 +146,7 @@ You can run the whole pipeline via CLI commands:
 | Audio Playback/Download Fails |Updated `ContentPanel.tsx` to correctly attach JWT tokens to download/play requests.|
 
 # A video demo (screen recording, 3–5 min) 
-- [Demo_vedio]([https://github.com/karthikeya-vppcoe](https://drive.google.com/file/d/17b7OWL2zoIbazN91AX_WahUwMMAHM_k6/view?usp=sharing))
+- [Demo_vedio](https://drive.google.com/file/d/17b7OWL2zoIbazN91AX_WahUwMMAHM_k6/view?usp=sharing)
 
 ## 🚀 Future Improvements
 - Replace SQLite with PostgreSQL for production-grade scalability.
