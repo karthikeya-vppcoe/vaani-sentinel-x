@@ -1,135 +1,175 @@
-import sqlite3
 import json
+import sqlite3
 import os
-from datetime import datetime, timedelta
 import logging
+import re
+import argparse
+from datetime import datetime, timedelta
+from typing import List, Dict
+import uuid
 
-# Custom filter to add user field to log records
-class UserFilter(logging.Filter):
-    def __init__(self, user_id):
-        super().__init__()
-        self.user_id = user_id
-
-    def filter(self, record):
-        record.user = self.user_id
-        return True
-
-# Configure logging
-USER_ID = "agent_d_scheduler"
+# === Logging Setup for Agent D (Scheduler) ===
+USER_ID = 'agent_d_user'
 logger = logging.getLogger('scheduler')
 logger.setLevel(logging.INFO)
 
-# Create file handler
-os.makedirs('logs', exist_ok=True)
-file_handler = logging.FileHandler("logs/log.txt")
+log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'logs'))
+os.makedirs(log_dir, exist_ok=True)
+log_path = os.path.join(log_dir, 'scheduler.txt')
+file_handler = logging.FileHandler(log_path, encoding='utf-8')
 file_handler.setLevel(logging.INFO)
-
-# Create formatter with the custom format
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
 file_handler.setFormatter(formatter)
+file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
+logger.handlers = [file_handler]
 
-# Add the custom filter to inject the user field
-file_handler.addFilter(UserFilter(USER_ID))
+# === Function to Schedule Content ===
+def schedule_content(content_files: List[str], platform: str, content_type: str, lang: str) -> List[Dict]:
+    """Schedule content for a specific platform, content type, and language (Agent D: Task 2)."""
+    scheduled = []
+    try:
+        db_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduler_db'))
+        os.makedirs(db_dir, exist_ok=True)
+        db_path = os.path.join(db_dir, 'scheduled_posts.db')
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        # Table is already dropped and recreated in run_scheduler, just ensure it exists
+        c.execute('''CREATE TABLE IF NOT EXISTS scheduled_posts
+                     (content_id TEXT, platform TEXT, content_type TEXT, content TEXT,
+                      scheduled_time TEXT, status TEXT, post_id TEXT PRIMARY KEY, lang TEXT)''')
 
-# Add a stream handler for console output
-stream_handler = logging.StreamHandler()
-stream_handler.setLevel(logging.INFO)
-stream_handler.setFormatter(formatter)
-stream_handler.addFilter(UserFilter(USER_ID))
+        for content_file in content_files:
+            try:
+                with open(content_file, 'r', encoding='utf-8') as f:
+                    content_data = json.load(f)
 
-# Add handlers to the logger
-logger.handlers = []
-logger.addHandler(file_handler)
-logger.addHandler(stream_handler)
+                content_id = content_data.get('id')
+                file_platform = content_data.get('platform')
+                content = content_data.get(content_type if content_type != 'voice' else 'voice_script', '')
 
-# Database setup
-DB_PATH = "scheduler_db/scheduled_posts.db"
-CONTENT_READY_DIR = "content/content_ready"
+                if not content_id or not file_platform:
+                    logger.warning(f"Missing ID or platform in {content_file}, skipping")
+                    continue
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS scheduled_posts (
-            content_id INTEGER,
-            platform TEXT,
-            content_type TEXT,
-            scheduled_time TEXT,
-            status TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-    logger.info(f"Initialized database at {DB_PATH}")
+                # Skip if not intended platform
+                if file_platform != platform:
+                    logger.info(f"Skipping {content_file}: platform mismatch ({file_platform} != {platform})")
+                    continue
 
-def schedule_content():
-    logger.info("Starting scheduler")
-    
-    # Load content files from content_ready
-    content_files = []
-    for filename in os.listdir(CONTENT_READY_DIR):
-        if filename.endswith('.json') and "encrypted" not in filename:
-            parts = filename.split('_')
-            if len(parts) != 4:  # e.g., tweet_1_20250423_000047.json
+                # Since we clear the database at the start, no need to check for duplicates
+                post_id = str(uuid.uuid4())
+                scheduled_time = (datetime.now() - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')  # Backdated for testing
+
+                c.execute(
+                    "INSERT INTO scheduled_posts (content_id, platform, content_type, content, scheduled_time, status, post_id, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (content_id, platform, content_type, content, scheduled_time, 'pending', post_id, lang)
+                )
+                scheduled.append({
+                    'content_id': content_id,
+                    'platform': platform,
+                    'content_type': content_type,
+                    'post_id': post_id,
+                    'scheduled_time': scheduled_time
+                })
+                logger.info(f"Scheduled {content_id} for {platform} {content_type} at {scheduled_time} (lang: {lang})")
+
+            except (json.JSONDecodeError, FileNotFoundError, UnicodeDecodeError) as e:
+                logger.error(f"Failed to process {content_file}: {str(e)}")
                 continue
-            content_type = parts[0]  # tweet, post, voice
-            content_id = int(parts[1])  # 1, 3, etc.
-            content_files.append((filename, content_type, content_id))
-    
-    # Process MP3 files (voice audio) separately to avoid duplicates
-    voice_audio_files = []
-    for filename in os.listdir(CONTENT_READY_DIR):
-        if filename.endswith('.mp3'):
-            parts = filename.split('_')
-            if len(parts) != 4:
-                continue
-            content_type = parts[0]
-            content_id = int(parts[1])
-            if content_type == "voice":
-                voice_audio_files.append((filename, content_type, content_id))
-    
-    if not content_files and not voice_audio_files:
-        logger.warning(f"No content files found in {CONTENT_READY_DIR}")
-        return
 
-    # Get current time and set scheduled time to now (or slightly in the past)
-    now = datetime.now()
-    scheduled_time = now.strftime('%Y-%m-%d %H:%M:%S')  # Current time
+        conn.commit()
+    except sqlite3.Error as e:
+        logger.error(f"Database error: {str(e)}")
+        raise
+    finally:
+        conn.close()
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    # Clear existing scheduled posts to avoid duplicates
-    c.execute("DELETE FROM scheduled_posts")
-    conn.commit()
+    return scheduled
 
-    # Schedule JSON content (posts, tweets, voice scripts)
-    for _, content_type, content_id in content_files:
-        platform = 'Instagram' if content_type == 'post' else 'Twitter' if content_type == 'tweet' else 'Spotify'
-        
-        c.execute(
-            "INSERT INTO scheduled_posts (content_id, platform, content_type, scheduled_time, status) VALUES (?, ?, ?, ?, ?)",
-            (content_id, platform, content_type, scheduled_time, 'pending')
-        )
-        logger.info(f"Scheduled {content_type} ID {content_id} for {platform} at {scheduled_time}")
-    
-    # Schedule MP3 content (voice audio), avoiding duplicates with voice scripts
-    processed_voice_ids = set(item[2] for item in content_files if item[1] == "voice")
-    for _, content_type, content_id in voice_audio_files:
-        if content_id in processed_voice_ids:
+# === Function to Run Scheduler Across Specified Languages & Platforms ===
+def run_scheduler(content_dirs: List[str], selected_language: str) -> None:
+    """Run Agent D Scheduler for the specified language, clearing the database first."""
+    logger.info(f"Starting Agent D: Scheduler for language: {selected_language}")
+    logger.info(f"Python working directory: {os.getcwd()}")
+    logger.info(f"Content directories to check: {content_dirs}")
+
+    # Clear the database before scheduling
+    db_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduler_db'))
+    os.makedirs(db_dir, exist_ok=True)
+    db_path = os.path.join(db_dir, 'scheduled_posts.db')
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        c.execute("DROP TABLE IF EXISTS scheduled_posts")
+        c.execute('''CREATE TABLE scheduled_posts
+                     (content_id TEXT, platform TEXT, content_type TEXT, content TEXT,
+                      scheduled_time TEXT, status TEXT, post_id TEXT PRIMARY KEY, lang TEXT)''')
+        conn.commit()
+        logger.info("Cleared and recreated scheduled_posts database with lang column.")
+    except sqlite3.Error as e:
+        logger.error(f"Failed to clear database: {str(e)}")
+        raise
+    finally:
+        conn.close()
+
+    platforms = {
+        'tweet': ['twitter'],
+        'post': ['instagram', 'linkedin'],
+        'voice': ['sanatan']
+    }
+
+    # Filter directories based on the selected language
+    dirs_to_process = [d for d in content_dirs if selected_language == 'all' or os.path.basename(d) == selected_language]
+
+    for content_dir in dirs_to_process:
+        logger.info(f"Checking content directory: {content_dir}")
+        if not os.path.exists(content_dir):
+            logger.error(f"Content directory does not exist: {content_dir}")
             continue
-        platform = 'Spotify'
-        
-        c.execute(
-            "INSERT INTO scheduled_posts (content_id, platform, content_type, scheduled_time, status) VALUES (?, ?, ?, ?, ?)",
-            (content_id, platform, content_type, scheduled_time, 'pending')
-        )
-        logger.info(f"Scheduled {content_type} ID {content_id} for {platform} at {scheduled_time}")
-    
-    conn.commit()
-    conn.close()
-    logger.info(f"Scheduler completed at {datetime.now()}")
+        try:
+            files_in_dir = os.listdir(content_dir)
+            logger.info(f"Found {len(files_in_dir)} files in {content_dir}: {files_in_dir}")
+        except Exception as e:
+            logger.error(f"Error accessing directory {content_dir}: {str(e)}")
+            continue
+        # Extract language from directory path (e.g., 'en', 'hi', 'sa')
+        lang = os.path.basename(content_dir)
+        try:
+            for content_type, platform_list in platforms.items():
+                content_files = [
+                    os.path.join(content_dir, f) for f in files_in_dir
+                    if f.startswith(f"{content_type}_") and f.endswith(".json")
+                ]
+                logger.info(f"For content_type '{content_type}', found files: {content_files}")
+                for platform in platform_list:
+                    logger.info(f"Processing platform: {platform} for content_type: {content_type} (lang: {lang})")
+                    if content_files:
+                        scheduled = schedule_content(content_files, platform, content_type, lang)
+                        logger.info(f"Scheduled {len(scheduled)} {content_type} posts for {platform} (lang: {lang})")
+                    else:
+                        logger.info(f"No {content_type} files found for {platform} in {content_dir} (lang: {lang})")
+        except Exception as e:
+            logger.error(f"Failed to process directory {content_dir}: {str(e)}")
+            continue
+
+    logger.info("Completed scheduling.")
+
+# === Entry Point ===
+def main() -> None:
+    """Main function to run the scheduler with a language argument."""
+    parser = argparse.ArgumentParser(description="Run Agent D: Scheduler")
+    parser.add_argument('language', choices=['en', 'hi', 'sa', 'all'], help="Language to process (en, hi, sa, all)")
+    args = parser.parse_args()
+
+    logger.info("Agent D Scheduler script started.")
+    content_dirs = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'content_ready', lang))
+        for lang in ['en', 'hi', 'sa']
+    ]
+    for d in content_dirs:
+        logger.info(f"Should check directory: {d} (exists: {os.path.exists(d)})")
+    run_scheduler(content_dirs, args.language)
+    logger.info("Agent D Scheduler script finished.")
 
 if __name__ == "__main__":
-    init_db()
-    schedule_content()
+    main()

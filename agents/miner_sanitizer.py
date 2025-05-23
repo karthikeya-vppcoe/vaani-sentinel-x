@@ -1,132 +1,191 @@
-import pandas as pd
+import csv
 import json
 import os
-import re
 import logging
-from datetime import datetime
-from better_profanity import profanity
-from textblob import TextBlob
+from typing import List, Dict, Set
+from langdetect import detect, LangDetectException
 
-# Custom filter to add user field to log records
-class UserFilter(logging.Filter):
-    def __init__(self, user_id):
-        super().__init__()
-        self.user_id = user_id
-
-    def filter(self, record):
-        record.user = self.user_id
-        return True
-
-# Configure logging
+# Logging setup for Agent A (Knowledge Miner & Sanitizer)
 USER_ID = 'agent_a_user'
 logger = logging.getLogger('miner_sanitizer')
 logger.setLevel(logging.INFO)
-
-# Create file handler
-os.makedirs('logs', exist_ok=True)
-file_handler = logging.FileHandler('logs/log.txt')
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
+os.makedirs(log_dir, exist_ok=True)
+log_path = os.path.join(log_dir, 'miner_sanitizer.txt')
+file_handler = logging.FileHandler(log_path, encoding='utf-8')
 file_handler.setLevel(logging.INFO)
-
-# Create formatter with the custom format
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
 file_handler.setFormatter(formatter)
+file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
+logger.handlers = [file_handler]
 
-# Add the custom filter to inject the user field
-file_handler.addFilter(UserFilter(USER_ID))
+# Supported languages
+SUPPORTED_LANGUAGES = {'en', 'hi', 'sa'}
 
-# Add the handler to the logger
-logger.handlers = []
-logger.addHandler(file_handler)
+# Keywords for Sanskrit detection
+SANSKRIT_KEYWORDS = {'ॐ', 'महादेव', 'नमः', 'शिवाय', 'विद्या', 'विनयं'}
 
-# Reduce verbosity of external libraries
-logging.getLogger('httpx').setLevel(logging.WARNING)
-logging.getLogger('httpcore').setLevel(logging.WARNING)
+def load_sample_data(file_path: str) -> List[Dict]:
+    """Load sample data from CSV and strip comments from fields."""
+    data = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Strip comments (e.g., # Comment) from each field
+                cleaned_row = {key: value.split('#')[0].strip() for key, value in row.items()}
+                data.append(cleaned_row)
+        logger.info(f"Loaded {len(data)} records from {file_path}")
+        return data
+    except Exception as e:
+        logger.error(f"Failed to load sample data from {file_path}: {str(e)}")
+        return []
 
-def load_data(file_path):
-    logger.info(f"Loading data from {file_path}", extra={"user": USER_ID})
-    if file_path.endswith('.csv'):
-        return pd.read_csv(file_path)
-    elif file_path.endswith('.json'):
-        return pd.read_json(file_path)
-    raise ValueError("Unsupported file format")
+def load_truth_source(file_path: str) -> Set[str]:
+    """Load truth source facts from CSV."""
+    facts = set()
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            next(reader)  # Skip header
+            for row in reader:
+                if row and row[0].strip():
+                    facts.add(row[0].strip())
+        logger.info(f"Loaded {len(facts)} facts from {file_path}")
+        return facts
+    except Exception as e:
+        logger.error(f"Failed to load truth source from {file_path}: {str(e)}")
+        return set()
 
-def check_profanity(text):
-    return profanity.contains_profanity(text)
+def detect_language(text: str) -> str:
+    """Detect the language of the given text with custom Sanskrit detection."""
+    # Custom rule: Check for Sanskrit keywords
+    if any(keyword in text for keyword in SANSKRIT_KEYWORDS):
+        logger.info("Detected Sanskrit based on keywords")
+        return 'sa'
+    
+    # Fallback to langdetect
+    try:
+        detected_lang = detect(text)
+        if detected_lang not in SUPPORTED_LANGUAGES:
+            logger.warning(f"Detected language '{detected_lang}' not supported, defaulting to 'en'")
+            return 'en'
+        logger.info(f"Detected language via langdetect: {detected_lang}")
+        return detected_lang
+    except LangDetectException as e:
+        logger.error(f"Language detection failed: {str(e)}, defaulting to 'en'")
+        return 'en'
 
-def check_bias(text):
-    blob = TextBlob(text)
-    polarity = blob.sentiment.polarity
-    political_keywords = re.compile(r'\b(politics|political|party|government|election)\b', re.IGNORECASE)
-    has_political_content = bool(political_keywords.search(text))
-    emotional_keywords = re.compile(r'\b(amazing|terrible|horrible|wonderful|awful|fantastic|disgusting)\b', re.IGNORECASE)
-    has_emotional_content = bool(emotional_keywords.search(text))
-    is_biased = abs(polarity) > 0.5 or has_political_content or has_emotional_content
-    return "biased" if is_biased else "neutral"
+def check_profanity(text: str) -> bool:
+    """Check for profanity in the text."""
+    profanity_words = {'damn', 'offensive'}  # Simplified list for this example
+    words = set(text.lower().split())
+    return bool(words & profanity_words)
 
-def verify_content(text, truth_source, content_type):
-    truth_df = pd.read_csv(truth_source)
+def check_bias(text: str, language: str) -> str:
+    """Check for bias in the text (e.g., political, religious, or opinionated content)."""
+    # Political bias detection
+    political_keywords = {'political', 'party'}
+    if any(keyword in text.lower() for keyword in political_keywords):
+        return "biased"
+    
+    # Religious bias detection
+    religious_keywords = {'ॐ', 'शिवाय', 'महादेव'}  # Religious terms
+    harmful_keywords = {'नाशति', 'destroy', 'hate', 'enemy', 'शत्रून्'}  # Harmful context
+    
+    # Check if the text contains religious terms
+    has_religious_content = any(keyword in text for keyword in religious_keywords)
+    
+    # If religious content is present, check for harmful context
+    if has_religious_content:
+        if any(harmful in text for harmful in harmful_keywords):
+            return "biased"  # Harmful religious content
+        return "neutral"  # Benign religious content
+    
+    # Default case: no bias detected
+    return "neutral"
+
+def sanitize_content_block(block: Dict, truth_facts: Set[str]) -> Dict:
+    """Sanitize a content block and add metadata with language detection."""
+    text = block['text']
+    content_type = block['type']
+    
+    # Check for language field; if missing or invalid, detect the language
+    language = block.get('language', '').strip()
+    if not language or language not in SUPPORTED_LANGUAGES:
+        logger.warning(f"Language field missing or invalid ('{language}') for block ID {block['id']}, detecting language")
+        language = detect_language(text)
+        block['language'] = language
+    
+    # Check for profanity
+    has_profanity = check_profanity(text)
+    
+    # Check for bias
+    bias = check_bias(text, language)
+    
+    # Verify facts against truth source
+    verified = False
     if content_type == 'fact':
-        # Stricter verification for facts
-        return text.lower() in truth_df['fact'].str.lower().values
-    elif content_type == 'quote':
-        # Quotes don't need truth verification
-        return True
-    elif content_type == 'micro-article':
-        # Partial match for micro-articles
-        return any(text.lower() in fact.lower() or fact.lower() in text.lower() for fact in truth_df['fact'])
+        verified = text in truth_facts
+    # For non-fact types (e.g., quote, micro-article), verification is not required
     else:
-        # Misc content doesn't need verification
-        return True
+        verified = False  # Default for non-facts
+    
+    # Add metadata to the block
+    block['profanity'] = has_profanity
+    block['bias'] = bias
+    block['verified'] = verified
+    
+    return block
 
-def structure_content(data, truth_source, output_path):
-    if 'id' not in data.columns or 'text' not in data.columns or 'type' not in data.columns:
-        logger.error(f"Input data missing 'id', 'text', or 'type' columns", extra={"user": USER_ID})
-        raise ValueError("Input data must have 'id', 'text', and 'type' columns")
-
-    content_blocks = []
-    for _, row in data.iterrows():
-        text = row['text']
-        content_type = row['type']
-        has_profanity = check_profanity(text)
-        bias_status = check_bias(text)
-        is_verified = verify_content(text, truth_source, content_type)
-
-        # Skip content with profanity or bias
-        if has_profanity or bias_status == "biased":
-            logger.warning(f"Skipping block ID {row['id']} (profanity: {has_profanity}, bias: {bias_status})", extra={"user": USER_ID})
+def run_miner_sanitizer() -> None:
+    """Run Agent A: Knowledge Miner & Sanitizer."""
+    logger.info("Starting Agent A: Knowledge Miner & Sanitizer")
+    
+    # Define file paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    raw_dir = os.path.join(script_dir, '..', 'content', 'raw')
+    structured_dir = os.path.join(script_dir, '..', 'content', 'structured')
+    sample_file = os.path.join(raw_dir, 'sample.csv')
+    truth_file = os.path.join(raw_dir, 'truth-source.csv')
+    output_file = os.path.join(structured_dir, 'content_blocks.json')
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(structured_dir, exist_ok=True)
+    
+    # Load data
+    sample_data = load_sample_data(sample_file)
+    if not sample_data:
+        logger.error("No sample data loaded, exiting")
+        return
+    
+    truth_facts = load_truth_source(truth_file)
+    
+    # Sanitize content blocks
+    sanitized_blocks = []
+    for block in sample_data:
+        block_id = block['id']
+        sanitized_block = sanitize_content_block(block, truth_facts)
+        
+        # Skip blocks that fail sanitization
+        if sanitized_block['profanity']:
+            logger.warning(f"Skipping block ID {block_id} (lang: {sanitized_block['language']}, profanity: True, bias: {sanitized_block['bias']}, verified: {sanitized_block['verified']})")
             continue
-
-        if not is_verified:
-            logger.warning(f"Skipping block ID {row['id']} (not verified against truth source)", extra={"user": USER_ID})
+        if sanitized_block['bias'] == "biased":
+            logger.warning(f"Skipping block ID {block_id} (lang: {sanitized_block['language']}, profanity: {sanitized_block['profanity']}, bias: biased, verified: {sanitized_block['verified']})")
             continue
-
-        block = {
-            'id': row['id'],
-            'text': text,
-            'type': content_type,
-            'profanity': False,  # Explicitly set to False since we filtered
-            'bias': 'neutral',  # Explicitly set to neutral since we filtered
-            'verified': True    # Explicitly set to True since we filtered
-        }
-        content_blocks.append(block)
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'w') as f:
-        json.dump(content_blocks, f, indent=2)
-    logger.info(f"Saved {len(content_blocks)} content blocks to {output_path}", extra={"user": USER_ID})
-    return content_blocks
-
-def main():
-    logger.info(f"Starting Agent A: Knowledge Miner & Sanitizer", extra={"user": USER_ID})
-    input_file = 'content/raw/sample.csv'
-    truth_source = 'content/raw/truth-source.csv'
-    output_path = 'content/structured/content_blocks.json'
-
-    data = load_data(input_file)
-    blocks = structure_content(data, truth_source, output_path)
-    logger.info(f"Processed {len(blocks)} content blocks", extra={"user": USER_ID})
-    print(f"Processed {len(blocks)} content blocks. Saved to {output_path}")
+        if sanitized_block['type'] == 'fact' and not sanitized_block['verified']:
+            logger.warning(f"Skipping block ID {block_id} (lang: {sanitized_block['language']}, profanity: {sanitized_block['profanity']}, bias: {sanitized_block['bias']}, verified: False)")
+            continue
+        
+        logger.info(f"Sanitized block ID {block_id}")
+        sanitized_blocks.append(sanitized_block)
+    
+    # Save sanitized blocks
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(sanitized_blocks, f, ensure_ascii=False, indent=2)
+    logger.info(f"Saved {len(sanitized_blocks)} content blocks to {output_file}")
+    logger.info(f"Processed {len(sanitized_blocks)} content blocks")
 
 if __name__ == "__main__":
-    os.makedirs('logs', exist_ok=True)
-    main()
+    run_miner_sanitizer()

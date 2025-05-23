@@ -1,6 +1,13 @@
-id,text,type
-1,The sky is blue,fact
-2,Exciting news about tech!,micro-article
-3,Support this cause,quote
-4,This is damn offensive!,fact
-5,Support this political party!,quote
+id,text,type,language
+1,The sky is blue,fact,en
+2,Exciting news about tech!,micro-article,en
+3,Support this cause,quote,en
+4,This is damn offensive!,fact,en
+5,Support this political party!,quote,en
+6,आकाश नीला है,fact,hi
+7,प्रौद्योगिकी के बारे में रोमांचक समाचार!,micro-article,hi
+8,इस कारण का समर्थन करें,quote,hi
+9,ॐ नमः शिवाय,quote,sa
+10,विद्या विनयं ददाति,fact,sa
+11,ॐ शत्रून् नाशति,quote,sa  
+12,हर हर महादेव,quote,  

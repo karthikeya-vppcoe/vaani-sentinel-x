@@ -1,228 +1,201 @@
 import sqlite3
-import requests
-import re
-from datetime import datetime, timedelta
-import logging
-import json
-from pathlib import Path
 import time
 import os
-import glob
-from textblob import TextBlob
+import logging
+import json
+import jwt
+import re
+import argparse
+from datetime import datetime
+from typing import Dict, Tuple, List
 
-# Custom filter to add user field to log records
-class UserFilter(logging.Filter):
-    def __init__(self, user_id):
-        super().__init__()
-        self.user_id = user_id
-
-    def filter(self, record):
-        record.user = self.user_id
-        return True
-
-# Configure logging
-USER_ID = "agent_d_publisher"
+# Logging setup for Agent D (Publisher Simulator)
+USER_ID = 'agent_d_publisher'
 logger = logging.getLogger('publisher_sim')
 logger.setLevel(logging.INFO)
 
-# Create file handler
-os.makedirs('logs', exist_ok=True)
-file_handler = logging.FileHandler("logs/log.txt")
+log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'logs'))
+os.makedirs(log_dir, exist_ok=True)
+file_handler = logging.FileHandler(os.path.join(log_dir, 'publisher_sim.txt'), encoding='utf-8')
 file_handler.setLevel(logging.INFO)
 
-# Create formatter with the custom format
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
 file_handler.setFormatter(formatter)
+file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 
-# Add the custom filter to inject the user field
-file_handler.addFilter(UserFilter(USER_ID))
+logger.handlers = [file_handler]
 
-# Add a stream handler for console output
-stream_handler = logging.StreamHandler()
-stream_handler.setLevel(logging.INFO)
-stream_handler.setFormatter(formatter)
-stream_handler.addFilter(UserFilter(USER_ID))
+# Constants
+CONTENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'content_ready'))
+DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduler_db', 'scheduled_posts.db'))
+SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key')
 
-# Add handlers to the logger
-logger.handlers = []
-logger.addHandler(file_handler)
-logger.addHandler(stream_handler)
-
-# Reduce verbosity of external libraries
-logging.getLogger('requests').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-
-# Database setup
-DB_PATH = "scheduler_db/scheduled_posts.db"
-
-# Controversial terms for ethics scoring
-CONTROVERSIAL_TERMS = re.compile(
-    r'\b(religion|religious|politics|political|bias|offensive|racist|sexist|controversial)\b',
-    re.IGNORECASE
-)
-
-def get_pending_posts(grace_period_seconds=10):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    now = datetime.now()
-    cutoff_time = (now + timedelta(seconds=grace_period_seconds)).strftime('%Y-%m-%d %H:%M:%S')
-    c.execute("SELECT * FROM scheduled_posts WHERE status = 'pending' AND scheduled_time <= ?", (cutoff_time,))
-    posts = c.fetchall()
-    conn.close()
-    return posts
-
-def load_content(file_path):
+def get_content_file(content_id: str, content_type: str, lang: str, platform: str) -> str:
+    """Find the content file for a given content ID, type, language, and platform with precise pattern matching."""
+    lang_dir = os.path.join(CONTENT_DIR, lang)
+    absolute_lang_dir = os.path.abspath(lang_dir)
     try:
-        with open(file_path, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Failed to load {file_path}: {str(e)}")
-        return None
+        logger.info(f"Listing all files in {absolute_lang_dir} for content_id={content_id}, content_type={content_type}, platform={platform}")
+        files = os.listdir(absolute_lang_dir)
+        logger.info(f"Files found: {files}")
+        # Pattern: {content_type}_{content_id}_{platform}_*.json
+        pattern = re.compile(rf'^{content_type}_{content_id}_{platform}_[0-9a-f]+\.json$')
+        for filename in files:
+            logger.info(f"Checking file: {filename}")
+            if pattern.match(filename):
+                logger.info(f"Matched content file: {filename} for content_id={content_id}, content_type={content_type}, platform={platform}, lang={lang}")
+                return os.path.join(absolute_lang_dir, filename)
+            else:
+                logger.info(f"File {filename} did not match pattern: {pattern.pattern}")
+        logger.error(f"No content file matched in {absolute_lang_dir} for content_id={content_id}, content_type={content_type}, platform={platform}")
+    except FileNotFoundError:
+        logger.warning(f"Content directory {absolute_lang_dir} not found")
+    return ''
 
-def calculate_scores(content, content_type):
-    """Calculate ethics, virality, and neutrality scores."""
-    text = content.get(content_type if content_type != 'voice' else 'voice_script', '')
-
-    # Ethics: Lower score if controversial terms are present
-    ethics = 0.9
-    if CONTROVERSIAL_TERMS.search(text):
-        ethics = 0.3
-        logger.info(f"Lowered ethics score for {content_type} due to controversial terms")
-
-    # Virality: Based on length and keyword density
-    words = text.split()
-    word_count = len(words)
-    keyword_density = sum(1 for word in words if word.lower() in ['new', 'exciting', 'breaking', 'exclusive']) / max(word_count, 1)
-    virality = min(0.7, 0.4 + (word_count / 100) + keyword_density)
-
-    # Neutrality: Based on sentiment analysis
-    blob = TextBlob(text)
-    polarity = blob.sentiment.polarity
-    neutrality = 1.0 - abs(polarity)  # Closer to 0 is more neutral
-
-    return {'ethics': round(ethics, 2), 'virality': round(virality, 2), 'neutrality': round(neutrality, 2)}
-
-def get_auth_token():
-    """Authenticate and get JWT token."""
-    login_url = "http://localhost:5000/api/login"
-    credentials = {"email": "test@vaani.com", "password": "password123"}
+def get_audio_file(content_id: str, lang: str, platform: str) -> str:
+    """Find the audio file for a given content ID, language, and platform."""
+    lang_dir = os.path.join(CONTENT_DIR, lang)
+    absolute_lang_dir = os.path.abspath(lang_dir)
     try:
-        response = requests.post(login_url, json=credentials)
-        response.raise_for_status()
-        token = response.json().get("token")
-        logger.info(f"Obtained JWT token")
+        for filename in os.listdir(absolute_lang_dir):
+            if filename.startswith(f"voice_{content_id}_{platform}_") and filename.endswith('.mp3'):
+                full_path = os.path.join(absolute_lang_dir, filename)
+                logger.info(f"Found audio file: {full_path}")
+                return full_path
+        logger.warning(f"No audio file found in {absolute_lang_dir} for content_id={content_id}, platform={platform}")
+    except FileNotFoundError:
+        logger.warning(f"Content directory {absolute_lang_dir} not found")
+    return ''
+
+def generate_jwt_token() -> str:
+    """Generate a JWT token for authentication."""
+    try:
+        payload = {
+            'sub': 'publisher',
+            'iat': int(time.time()),
+            'exp': int(time.time()) + 3600
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+        logger.info("Obtained JWT token")
         return token
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to obtain JWT token: {e}")
-        return None
+    except Exception as e:
+        logger.error(f"Failed to generate JWT token: {str(e)}")
+        raise
 
-def publish_content(content_id, platform, content_type, token):
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-    data = {"contentId": str(content_id), "type": content_type}
-
-    if platform == 'Instagram':
-        url = 'http://localhost:5000/instagram/post'
-    elif platform == 'Twitter':
-        url = 'http://localhost:5000/twitter/post'
-    elif platform == 'Spotify':
-        url = 'http://localhost:5000/spotify/upload'
-    else:
-        raise ValueError(f"Unsupported platform: {platform}")
-
+def publish_to_platform(platform: str, content: Dict, content_type: str, audio_file: str, token: str) -> bool:
+    """Simulate publishing content to a platform using the pre-tailored content."""
     try:
-        response = requests.post(url, json=data, headers=headers)
-        response.raise_for_status()
-        logger.info(f"Successfully published content ID {content_id} to {platform}")
+        content_text = content.get(content_type if content_type != 'voice' else 'voice_script', '')
+
+        logger.info(f"Simulating publishing {content_type} ID {content.get('id', 'unknown')} to {platform}: {content_text[:50]}...")
+        logger.info(f"Using JWT token for authentication: {token[:10]}...")
+        if platform == 'sanatan' and content_type == 'voice':
+            if not audio_file or not os.path.exists(audio_file):
+                logger.error(f"Audio file missing for voice content ID {content.get('id', 'unknown')} on {platform}")
+                return False
+            logger.info(f"Simulated upload of audio file {audio_file} to {platform}")
+        logger.info(f"Successfully simulated publishing {content_type} ID {content.get('id', 'unknown')} to {platform}")
         return True
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to publish content ID {content_id} to {platform}: {str(e)}")
+    except Exception as e:
+        logger.error(f"Failed to simulate publishing {content_type} to {platform}: {str(e)}")
         return False
 
-def update_status(content_id, platform, content_type, status):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "UPDATE scheduled_posts SET status = ? WHERE content_id = ? AND platform = ? AND content_type = ? AND status = 'pending'",
-        (status, content_id, platform, content_type)
-    )
-    conn.commit()
-    conn.close()
-    logger.info(f"Updated status to '{status}' for content ID {content_id}")
+def update_status(content_id: str, platform: str, lang: str, status: str) -> None:
+    """Update the status of a scheduled post using the lang column."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(
+            "UPDATE scheduled_posts SET status = ? WHERE content_id = ? AND platform = ? AND lang = ?",
+            (status, content_id, platform, lang)
+        )
+        conn.commit()
+        conn.close()
+        logger.info(f"Updated status to {status} for content ID {content_id} on {platform} (lang: {lang})")
+    except Exception as e:
+        logger.error(f"Failed to update status for content ID {content_id} on {platform} (lang: {lang}): {str(e)}")
 
-def run_publisher(max_attempts=3, wait_seconds=5):
-    logger.info("Starting publisher simulator")
-
-    token = get_auth_token()
-    if not token:
-        logger.error("No valid JWT token, aborting publish")
-        return
-
-    for attempt in range(max_attempts):
-        posts = get_pending_posts(grace_period_seconds=10)
-        if posts:
-            break
-        logger.info(f"Attempt {attempt + 1}/{max_attempts}: No posts due for publishing at {datetime.now().isoformat()}")
-        if attempt < max_attempts - 1:
-            time.sleep(wait_seconds)
-
-    if not posts:
-        logger.warning(f"No posts found to publish after {max_attempts} attempts")
-        return
-
-    # Aggregate scores by content_id
-    score_map = {}
-
-    # Process scheduled posts
-    for post in posts:
-        content_id, platform, content_type, _, _ = post
-        content_path = f"content/content_ready/{content_type}_{content_id}_*.json"
-        content_files = glob.glob(content_path)
-        if not content_files:
-            logger.warning(f"No content file found for ID {content_id}, type {content_type}")
-            continue
-
-        content = load_content(content_files[0])
-        if not content:
-            continue
-
-        scores = calculate_scores(content, content_type)
-        if content_id in score_map:
-            # Aggregate scores (average)
-            existing = score_map[content_id]
-            count = existing.get('count', 1) + 1
-            existing['ethics'] = (existing['ethics'] * (count - 1) + scores['ethics']) / count
-            existing['virality'] = (existing['virality'] * (count - 1) + scores['virality']) / count
-            existing['neutrality'] = (existing['neutrality'] * (count - 1) + scores['neutrality']) / count
-            existing['count'] = count
+def fetch_due_posts(selected_language: str) -> List[Tuple[str, str, str, str]]:
+    """Fetch posts that are due for publishing, filtered by language."""
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    due_posts = []
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        if selected_language == 'all':
+            c.execute(
+                "SELECT content_id, platform, content_type, lang FROM scheduled_posts WHERE status = ? AND scheduled_time <= ?",
+                ('pending', now)
+            )
         else:
-            score_map[content_id] = {**scores, 'count': 1}
+            c.execute(
+                "SELECT content_id, platform, content_type, lang FROM scheduled_posts WHERE status = ? AND scheduled_time <= ? AND lang = ?",
+                ('pending', now, selected_language)
+            )
+        due_posts = c.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to fetch due posts: {str(e)}")
+    return due_posts
 
-        success = publish_content(content_id, platform, content_type, token)
-        status = 'published' if success else 'failed'
-        update_status(content_id, platform, content_type, status)
+def publish_content(content_id: str, platform: str, content_type: str, token: str, lang: str) -> bool:
+    """Publish content to the specified platform."""
+    success = False
+    content_file = get_content_file(content_id, content_type, lang, platform)
+    if not content_file:
+        logger.error(f"No content file found for content ID {content_id} on {platform} (lang: {lang})")
+        update_status(content_id, platform, lang, 'failed')
+        return False
+    try:
+        with open(content_file, 'r', encoding='utf-8') as f:
+            content = json.load(f)
+        audio_file = get_audio_file(content_id, lang, platform) if content_type == 'voice' else ''
+        if content_type == 'voice' and platform == 'sanatan' and not audio_file:
+            logger.error(f"No audio file found for voice content ID {content_id} on {platform} (lang: {lang})")
+            update_status(content_id, platform, lang, 'failed')
+            return False
+        if publish_to_platform(platform, content, content_type, audio_file, token):
+            update_status(content_id, platform, lang, 'published')
+            success = True
+        else:
+            update_status(content_id, platform, lang, 'failed')
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load content file {content_file}: {str(e)}")
+        update_status(content_id, platform, lang, 'failed')
+    return success
 
-    # Convert score_map to list, removing count
-    scores = [
-        {
-            "id": content_id,
-            "ethics": round(score['ethics'], 2),
-            "virality": round(score['virality'], 2),
-            "neutrality": round(score['neutrality'], 2)
-        }
-        for content_id, score in score_map.items()
-    ]
+def run_publisher_sim(selected_language: str, max_attempts: int = 3) -> None:
+    """Run Agent D: Publisher Simulator for the specified language."""
+    logger.info(f"Starting Agent D: Publisher Simulator for language: {selected_language}")
+    token = generate_jwt_token()
 
-    # Save scores to content/scores.json
-    scores_file = Path("content/scores.json")
-    scores_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(scores_file, "w", encoding="utf-8") as f:
-        json.dump(scores, f, indent=2)
-    logger.info(f"Saved scores to {scores_file}")
+    processed_posts = []
+    for attempt in range(1, max_attempts + 1):
+        due_posts = fetch_due_posts(selected_language)
+        if not due_posts:
+            logger.info(f"Attempt {attempt}/{max_attempts}: No posts due for language {selected_language}")
+            if attempt < max_attempts:
+                time.sleep(5)
+            continue
 
-    logger.info(f"Publisher simulator completed at {datetime.now()}")
+        for content_id, platform, content_type, lang in due_posts:
+            success = publish_content(content_id, platform, content_type, token, lang)
+            status = 'published' if success else 'failed'
+            processed_posts.append(f"ID {content_id} ({platform}, {content_type}, {status}, lang: {lang})")
+
+        logger.info(f"Attempt {attempt}/{max_attempts}: Processed {len(due_posts)} posts: {', '.join(processed_posts)}")
+        break
+
+    if not processed_posts:
+        logger.warning(f"No posts processed after {max_attempts} attempts for language {selected_language}")
+
+def main() -> None:
+    """Main function to run the publisher simulator with a language argument."""
+    parser = argparse.ArgumentParser(description="Run Agent D: Publisher Simulator")
+    parser.add_argument('language', choices=['en', 'hi', 'sa', 'all'], help="Language to process (en, hi, sa, all)")
+    args = parser.parse_args()
+
+    run_publisher_sim(args.language)
 
 if __name__ == "__main__":
-    run_publisher()
+    main()

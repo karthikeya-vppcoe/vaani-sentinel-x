@@ -12,7 +12,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const CONTENT_DIR = path.resolve(__dirname, '../../../content/content_ready');
 const SCORES_PATH = path.resolve(__dirname, '../../../content/scores.json');
-const LOG_PATH = path.resolve(__dirname, '../../../logs/security.log');
+const ALERTS_PATH = path.resolve(__dirname, '../../../logs/alert_dashboard.json');
 const SECRET_KEY = process.env.SECRET_KEY || 'JWT_SECRET';
 
 app.use(cors());
@@ -72,71 +72,212 @@ app.post('/api/login', (req: Request, res: Response): void => {
 // Get content files
 app.get('/api/content', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log('Fetching content from:', CONTENT_DIR);
+    // Only use finalized content from content_ready
+    const currentDir = CONTENT_DIR;
+    const groupedContent: Record<string, any[]> = {};
+    console.log('Fetching content from:', currentDir);
     try {
-      await fs.access(CONTENT_DIR);
-      const files = await fs.readdir(CONTENT_DIR);
-      console.log('Files found:', files);
-
-      const contentItems = [];
-      for (const file of files) {
-        const parts = file.split(/[_|.]/);
-        console.log(`File: ${file}, Parts: ${JSON.stringify(parts)}, Is Valid: ${parts.length >= 4}`);
-        if (parts.length < 4) continue;
-
-        const [type, id, date, time] = parts;
-        if (!['post', 'tweet', 'voice'].includes(type)) continue;
-
-        const filePath = path.join(CONTENT_DIR, file);
-        const timestamp = `${date}_${time}`;
-        let content: string | undefined;
-        let contentType: string = type;
-
-        if (file.endsWith('.json')) {
-          const fileContent = await fs.readFile(filePath, 'utf-8');
-          const jsonContent = JSON.parse(fileContent);
-          content = jsonContent[type === 'voice' ? 'voice_script' : type];
-          if (type === 'voice') contentType = 'voice_script';
-        } else if (file.endsWith('.mp3')) {
-          contentType = 'voice';
+      await fs.access(currentDir);
+      // Get language directories
+      const langDirs = await fs.readdir(currentDir);
+      console.log('Language directories found:', langDirs);
+      // Process each language directory
+      for (const langDir of langDirs) {
+        const langPath = path.join(currentDir, langDir);
+        const langStat = await fs.stat(langPath);
+        // Skip if not a directory
+        if (!langStat.isDirectory()) continue;
+        // Get files in the language directory
+        const files = await fs.readdir(langPath);
+        console.log(`Files found in ${langDir}:`, files);
+        for (const file of files) {
+          const filePath = path.join(langPath, file);
+          // Process JSON files to extract metadata
+          if (file.endsWith('.json')) {
+            try {
+              const fileContent = await fs.readFile(filePath, 'utf-8');
+              const jsonContent = JSON.parse(fileContent);
+              let content: string | undefined;
+              let contentType: string;
+              let sentiment: string = jsonContent.sentiment || 'neutral';
+              let language: string = jsonContent.language || langDir;
+              if (jsonContent.text) {
+                content = jsonContent.text;
+                contentType = jsonContent.type || 'post';
+              } else if (jsonContent.post) {
+                content = jsonContent.post;
+                contentType = 'post';
+              } else if (jsonContent.tweet) {
+                content = jsonContent.tweet;
+                contentType = 'tweet';
+              } else if (jsonContent.voice_script) {
+                content = jsonContent.voice_script;
+                contentType = 'voice_script';
+              } else {
+                continue;
+              }
+              const id = jsonContent.id || file.split('.')[0];
+              const item = {
+                id,
+                type: contentType,
+                content,
+                url: `http://localhost:${PORT}/content/${langDir}/${file}`,
+                timestamp: new Date().toISOString(),
+                language,
+                sentiment
+              };
+              if (!groupedContent[language]) groupedContent[language] = [];
+              groupedContent[language].push(item);
+            } catch (jsonError) {
+              console.error(`Error processing JSON file ${file}:`, jsonError);
+            }
+          } else if (file.endsWith('.mp3')) {
+            const parts = file.split(/[_|.]/);
+            if (parts.length < 2) continue;
+            const id = parts[1] || file.split('.')[0];
+            const item = {
+              id,
+              type: 'voice',
+              url: `http://localhost:${PORT}/content/${langDir}/${file}`,
+              timestamp: new Date().toISOString(),
+              language: langDir,
+              sentiment: 'neutral'
+            };
+            if (!groupedContent[langDir]) groupedContent[langDir] = [];
+            groupedContent[langDir].push(item);
+          }
         }
-
-        console.log(`File: ${file}, Content Key: ${type === 'voice' ? 'voice_script' : type}, Content: ${content}`);
-        contentItems.push({
-          id,
-          type: contentType,
-          content,
-          url: `http://localhost:${PORT}/content/${file}`,
-          timestamp,
-        });
       }
-
-      console.log('Content items to return:', contentItems);
-      res.json(contentItems);
     } catch (accessError) {
       console.warn('content_ready directory not found, returning empty content');
-      res.json([]);
+      res.status(200).json(groupedContent);
+      return;
     }
+    console.log('Grouped content items to return:', groupedContent);
+    res.json(groupedContent);
   } catch (error) {
     console.error('Error in /api/content:', error);
     res.status(500).json({ message: 'Failed to load content', error: (error as Error).message });
   }
 });
 
-// Serve content files
-app.get('/content/:filename', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-  const filename = req.params.filename;
-  const filePath = path.join(CONTENT_DIR, filename);
-  console.log('Serving file:', filePath);
+// New endpoint for sentiment content from multilingual_ready
+app.get('/api/sentiment-content', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    await fs.access(filePath);
-    res.sendFile(filePath, {
-      headers: {
-        'Content-Type': filePath.endsWith('.mp3') ? 'audio/mpeg' : 'application/json',
-      },
-    });
+    const sentimentDir = path.resolve(__dirname, '../../../content/multilingual_ready');
+    const sentimentItems: any[] = [];
+    console.log('Fetching sentiment content from:', sentimentDir);
+    try {
+      await fs.access(sentimentDir);
+      // Get language directories
+      const langDirs = await fs.readdir(sentimentDir);
+      console.log('Language directories found:', langDirs);
+      // Process each language directory
+      for (const langDir of langDirs) {
+        const langPath = path.join(sentimentDir, langDir);
+        const langStat = await fs.stat(langPath);
+        // Skip if not a directory
+        if (!langStat.isDirectory()) continue;
+        // Get files in the language directory
+        const files = await fs.readdir(langPath);
+        console.log(`Files found in ${langDir}:`, files);
+        if (files.length === 0) {
+          console.log(`No files found in ${langDir}, skipping...`);
+          continue;
+        }
+        for (const file of files) {
+          const filePath = path.join(langPath, file);
+          if (file.endsWith('.json')) {
+            try {
+              const fileContent = await fs.readFile(filePath, 'utf-8');
+              const jsonContent = JSON.parse(fileContent);
+              let content: string | undefined;
+              let contentType: string;
+              let sentiment: string = jsonContent.sentiment || 'neutral';
+              let language: string = jsonContent.language || langDir;
+              if (jsonContent.text) {
+                content = jsonContent.text;
+                contentType = jsonContent.type || 'fact';
+              } else if (jsonContent.fact) {
+                content = jsonContent.fact;
+                contentType = 'fact';
+              } else if (jsonContent.quote) {
+                content = jsonContent.quote;
+                contentType = 'quote';
+              } else if (jsonContent['micro-article']) {
+                content = jsonContent['micro-article'];
+                contentType = 'micro-article';
+              } else {
+                console.log(`Skipping file ${file}: No recognized content field`);
+                continue;
+              }
+              const id = jsonContent.id || file.split('.')[0];
+              sentimentItems.push({
+                id,
+                type: contentType,
+                content,
+                url: `http://localhost:${PORT}/content/${langDir}/${file}`,
+                timestamp: new Date().toISOString(),
+                language,
+                sentiment
+              });
+            } catch (jsonError) {
+              console.error(`Error processing JSON file ${file}:`, jsonError);
+            }
+          } else {
+            console.log(`Skipping non-JSON file: ${file}`);
+          }
+        }
+      }
+    } catch (accessError) {
+      console.warn('multilingual_ready directory not found, returning empty sentiment content');
+      res.status(200).json(sentimentItems);
+      return;
+    }
+    if (sentimentItems.length === 0) {
+      console.log('No sentiment items found in multilingual_ready');
+    }
+    console.log('Sentiment content items to return:', sentimentItems);
+    res.json(sentimentItems);
   } catch (error) {
-    console.error('Error serving file:', error);
+    console.error('Error in /api/sentiment-content:', error);
+    res.status(500).json({ message: 'Failed to load sentiment content', error: (error as Error).message });
+  }
+});
+
+// Serve content files
+app.get('/content/:lang/:filename', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  const { lang, filename } = req.params;
+  
+  // Try to find the file in both content directories
+  const contentDirs = [
+    CONTENT_DIR,
+    path.resolve(__dirname, '../../../content/multilingual_ready')
+  ];
+  
+  let fileFound = false;
+  
+  for (const dir of contentDirs) {
+    const filePath = path.join(dir, lang, filename);
+    console.log('Trying to serve file from:', filePath);
+    
+    try {
+      await fs.access(filePath);
+      res.sendFile(filePath, {
+        headers: {
+          'Content-Type': filePath.endsWith('.mp3') ? 'audio/mpeg' : 'application/json',
+        },
+      });
+      fileFound = true;
+      console.log('File served successfully from:', filePath);
+      break;
+    } catch (error) {
+      console.log(`File not found in ${dir}, trying next directory if available`);
+    }
+  }
+  
+  if (!fileFound) {
+    console.error('Error: File not found in any content directory');
     res.status(404).json({ message: 'File not found' });
   }
 });
@@ -160,24 +301,17 @@ app.get('/api/scores', authenticateToken, async (req: Request, res: Response): P
   }
 });
 
-// Fetch alerts from security.log
+// Fetch alerts from alert_dashboard.json
 app.get('/api/alerts', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log('Fetching alerts from:', LOG_PATH);
+    console.log('Fetching alerts from:', ALERTS_PATH);
     try {
-      await fs.access(LOG_PATH); // Check if file exists
-      const logContent = await fs.readFile(LOG_PATH, 'utf-8');
-      const alerts = logContent
-        .split('\n')
-        .filter((line) => line.includes('WARNING') && line.includes('Controversial content detected'))
-        .map((line) => {
-          const [, timestamp, , , , message] = line.split(' - ');
-          return { timestamp, message };
-        });
+      await fs.access(ALERTS_PATH);
+      const alerts = JSON.parse(await fs.readFile(ALERTS_PATH, 'utf-8'));
       console.log('Alerts loaded:', alerts);
       res.json(alerts);
     } catch (accessError) {
-      console.warn('security.log not found, returning empty alerts');
+      console.warn('alert_dashboard.json not found, returning empty alerts');
       res.json([]);
     }
   } catch (error) {
