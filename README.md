@@ -134,6 +134,10 @@ You can manage and run the system components via the Command Center CLI (`cli/co
 | `python cli/command_center.py run <agent_script_name>` | Manually execute a specific agent script located in the `agents/` directory (e.g., `miner_sanitizer.py`). |
 | `python cli/command_center.py logs view [--agent <agent_name>] [--lines N]` | View detailed process logs. Can be filtered by agent and show the last N lines. |
 | `python cli/command_center.py pipeline <status|kill|restart> [--pipeline_id ID]` | Manage running pipelines or agents (e.g., check status, kill, or restart). |
+| `python command_center.py run-pipeline en --sentiment neutral` | For english content and select the sentiment . |
+| `python command_center.py run-pipeline hi --sentiment uplifting` | For hindi content and select the sentiment . |
+| `python command_center.py run-pipeline sa --sentiment devotional` | For sanskrit content and select the sentiment . |
+
 
 Note: Replace `<agent_script_name>`, `<agent_name>`, `N`, `<status|kill|restart>`, and `ID` with actual values as appropriate. The exact subcommands and parameters for logs and pipeline management might vary based on implementation.
 
@@ -266,7 +270,7 @@ This section provides a summary of key deliverables and development aspects rela
 | Audio Playback/Download Fails from Web UI                    | Updated `ContentPanel.tsx` in the Next.js frontend to correctly attach JWT tokens to download/play requests.   |
 
 # A video demo (screen recording, 3–5 min) 
-- [Demo_vedio](https://drive.google.com/file/d/1uufq7AhntUgNRRM_9cAvrRg55PkJ53ks/view?usp=sharing)
+- [Demo_vedio](https://drive.google.com/file/d/1Yw040nSTrP5cFYrfGt4V_ifV2kjYFTjE/view?usp=sharing)
 
 ## 🚀 Future Improvements
 - Replace SQLite with PostgreSQL for production-grade scalability.
