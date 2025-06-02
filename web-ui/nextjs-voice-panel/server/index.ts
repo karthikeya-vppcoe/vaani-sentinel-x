@@ -13,6 +13,8 @@ const PORT = process.env.PORT || 5000;
 const CONTENT_DIR = path.resolve(__dirname, '../../../content/content_ready');
 const SCORES_PATH = path.resolve(__dirname, '../../../content/scores.json');
 const ALERTS_PATH = path.resolve(__dirname, '../../../logs/alert_dashboard.json');
+const ANALYTICS_PATH = path.resolve(__dirname, '../../../analytics_db/post_metrics.json');
+const STRATEGIES_PATH = path.resolve(__dirname, '../../../analytics_db/strategy_suggestions.json');
 const SECRET_KEY = process.env.SECRET_KEY || 'JWT_SECRET';
 
 app.use(cors());
@@ -135,13 +137,24 @@ app.get('/api/content', authenticateToken, async (req: Request, res: Response): 
             const parts = file.split(/[_|.]/);
             if (parts.length < 2) continue;
             const id = parts[1] || file.split('.')[0];
+            let sentiment = 'neutral';  // Default
+            // Look for the corresponding JSON file to get the sentiment
+            const jsonFileName = file.replace('.mp3', '.json');
+            const jsonFilePath = path.join(langPath, jsonFileName);
+            try {
+              const jsonFileContent = await fs.readFile(jsonFilePath, 'utf-8');
+              const jsonContent = JSON.parse(jsonFileContent);
+              sentiment = jsonContent.sentiment || 'neutral';
+            } catch (jsonError) {
+              console.warn(`No matching JSON file found for ${file}, defaulting sentiment to neutral`);
+            }
             const item = {
               id,
               type: 'voice',
               url: `http://localhost:${PORT}/content/${langDir}/${file}`,
               timestamp: new Date().toISOString(),
               language: langDir,
-              sentiment: 'neutral'
+              sentiment: sentiment
             };
             if (!groupedContent[langDir]) groupedContent[langDir] = [];
             groupedContent[langDir].push(item);
@@ -158,6 +171,85 @@ app.get('/api/content', authenticateToken, async (req: Request, res: Response): 
   } catch (error) {
     console.error('Error in /api/content:', error);
     res.status(500).json({ message: 'Failed to load content', error: (error as Error).message });
+  }
+});
+
+// Task 3
+app.get('/api/analytics', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Route hit: /api/analytics`);
+    console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Resolved analytics path: ${ANALYTICS_PATH}`);
+    try {
+      await fs.access(ANALYTICS_PATH);
+      const fileContent = await fs.readFile(ANALYTICS_PATH, 'utf-8');
+      console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] File content length: ${fileContent.length}`);
+      if (!fileContent.trim()) {
+        console.warn(`[${new Date().toISOString()}] [${req.method} ${req.path}] post_metrics.json is empty`);
+        res.status(200).json([]);
+        return;
+      }
+      let metrics;
+      try {
+        metrics = JSON.parse(fileContent);
+        console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Parsed metrics type: ${typeof metrics}, isArray: ${Array.isArray(metrics)}`);
+        if (!Array.isArray(metrics)) {
+          console.error(`[${new Date().toISOString()}] [${req.method} ${req.path}] post_metrics.json is not an array:`, metrics);
+          res.status(500).json({ message: 'Invalid analytics data format' });
+          return;
+        }
+        console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Analytics loaded: ${metrics.length} items`);
+        res.status(200).json(metrics);
+      } catch (parseError) {
+        console.error(`[${new Date().toISOString()}] [${req.method} ${req.path}] Failed to parse post_metrics.json:`, parseError);
+        res.status(500).json({ message: 'Failed to parse analytics data' });
+        return;
+      }
+    } catch (accessError) {
+      console.warn(`[${new Date().toISOString()}] [${req.method} ${req.path}] post_metrics.json not found:`, accessError);
+      res.status(200).json([]);
+    }
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] [${req.method} ${req.path}] Error in /api/analytics:`, error);
+    res.status(500).json({ message: 'Failed to load analytics', error: (error as Error).message });
+  }
+});
+
+app.get('/api/strategies', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Route hit: /api/strategies`);
+    console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Resolved strategies path: ${STRATEGIES_PATH}`);
+    try {
+      await fs.access(STRATEGIES_PATH);
+      const fileContent = await fs.readFile(STRATEGIES_PATH, 'utf-8');
+      console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] File content length: ${fileContent.length}`);
+      if (!fileContent.trim()) {
+        console.warn(`[${new Date().toISOString()}] [${req.method} ${req.path}] strategy_suggestions.json is empty`);
+        res.status(200).json([]);
+        return;
+      }
+      let suggestions;
+      try {
+        suggestions = JSON.parse(fileContent);
+        console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Parsed suggestions type: ${typeof suggestions}, isArray: ${Array.isArray(suggestions)}`);
+        if (!Array.isArray(suggestions)) {
+          console.error(`[${new Date().toISOString()}] [${req.method} ${req.path}] strategy_suggestions.json is not an array:`, suggestions);
+          res.status(500).json({ message: 'Invalid strategies format' });
+          return;
+        }
+        console.log(`[${new Date().toISOString()}] [${req.method} ${req.path}] Strategies loaded: ${suggestions.length} items`);
+        res.status(200).json(suggestions);
+      } catch (parseError) {
+        console.error(`[${new Date().toISOString()}] [${req.method} ${req.path}] Failed to parse strategy_suggestions.json:`, parseError);
+        res.status(500).json({ message: 'Failed to parse strategies data' });
+        return;
+      }
+    } catch (accessError) {
+      console.warn(`[${new Date().toISOString()}] [${req.method} ${req.path}] strategy_suggestions.json not found:`, accessError);
+      res.status(200).json([]);
+    }
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] [${req.method} ${req.path}] Error in /api/strategies:`, error);
+    res.status(500).json({ message: 'Failed to load strategies', error: (error as Error).message });
   }
 });
 
@@ -332,6 +424,13 @@ app.post('/twitter/post', authenticateToken, (req: Request, res: Response): void
   const { contentId } = req.body;
   console.log(`Publishing content ${contentId} to Twitter`);
   res.json({ message: `Content ${contentId} published to Twitter` });
+});
+
+// Mock LinkedIn endpoint
+app.post('/linkedin/post', authenticateToken, (req: Request, res: Response): void => {
+  const { contentId } = req.body;
+  console.log(`Publishing content ${contentId} to LinkedIn`);
+  res.json({ message: `Content ${contentId} published to LinkedIn` });
 });
 
 // Mock Spotify endpoint

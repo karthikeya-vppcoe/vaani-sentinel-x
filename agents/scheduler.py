@@ -33,7 +33,7 @@ def schedule_content(content_files: List[str], platform: str, content_type: str,
         db_path = os.path.join(db_dir, 'scheduled_posts.db')
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
-        # Table is already dropped and recreated in run_scheduler, just ensure it exists
+        # Ensure table exists with correct schema
         c.execute('''CREATE TABLE IF NOT EXISTS scheduled_posts
                      (content_id TEXT, platform TEXT, content_type TEXT, content TEXT,
                       scheduled_time TEXT, status TEXT, post_id TEXT PRIMARY KEY, lang TEXT)''')

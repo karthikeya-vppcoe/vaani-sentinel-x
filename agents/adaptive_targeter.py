@@ -218,6 +218,10 @@ def process_files(input_dir: str, lang: str) -> None:
             content_id = content.get('id')
             platform = content.get('platform')
             tweet_text = content.get('tweet', '')
+            sentiment = content.get('sentiment', 'neutral')  # Preserve sentiment
+            tone = content.get('tone', 'formal')  # Preserve tone
+            content_type = content.get('content_type', 'tweet')  # Preserve content_type
+            version = content.get('version', 1)  # Preserve version
             if not content_id or not platform:
                 logger.warning(f"Missing ID or platform in {tweet_file}, skipping")
                 continue
@@ -226,7 +230,15 @@ def process_files(input_dir: str, lang: str) -> None:
                 continue
             tailored_tweet = tailor_content(tweet_text, platform, 'tweet', lang)
             with open(tweet_file, 'w', encoding='utf-8') as f:
-                json.dump({'id': content_id, 'tweet': tailored_tweet, 'platform': platform}, f, ensure_ascii=False, indent=2)
+                json.dump({
+                    'id': content_id,
+                    'tweet': tailored_tweet,
+                    'platform': platform,
+                    'content_type': content_type,
+                    'tone': tone,
+                    'sentiment': sentiment,
+                    'version': version
+                }, f, ensure_ascii=False, indent=2)
             logger.info(f"Overwrote tailored tweet in {tweet_file}")
             processed_files.add(tweet_file)
         except Exception as e:
@@ -245,6 +257,10 @@ def process_files(input_dir: str, lang: str) -> None:
             content_id = content.get('id')
             platform = content.get('platform')
             post_text = content.get('post', '')
+            sentiment = content.get('sentiment', 'neutral')  # Preserve sentiment
+            tone = content.get('tone', 'casual')  # Preserve tone
+            content_type = content.get('content_type', 'post')  # Preserve content_type
+            version = content.get('version', 1)  # Preserve version
             if not content_id or not platform:
                 logger.warning(f"Missing ID or platform in {post_file}, skipping")
                 continue
@@ -253,7 +269,15 @@ def process_files(input_dir: str, lang: str) -> None:
                 continue
             tailored_post = tailor_content(post_text, platform, 'post', lang)
             with open(post_file, 'w', encoding='utf-8') as f:
-                json.dump({'id': content_id, 'post': tailored_post, 'platform': platform}, f, ensure_ascii=False, indent=2)
+                json.dump({
+                    'id': content_id,
+                    'post': tailored_post,
+                    'platform': platform,
+                    'content_type': content_type,
+                    'tone': tone,
+                    'sentiment': sentiment,
+                    'version': version
+                }, f, ensure_ascii=False, indent=2)
             logger.info(f"Overwrote tailored post in {post_file}")
             processed_files.add(post_file)
         except Exception as e:
@@ -272,6 +296,10 @@ def process_files(input_dir: str, lang: str) -> None:
             content_id = content.get('id')
             platform = content.get('platform')
             voice_script = content.get('voice_script', '')
+            sentiment = content.get('sentiment', 'neutral')  # Preserve sentiment
+            tone = content.get('tone', 'devotional')  # Preserve tone
+            content_type = content.get('content_type', 'voice_script')  # Preserve content_type
+            version = content.get('version', 1)  # Preserve version
             if not content_id or not platform:
                 logger.warning(f"Missing ID or platform in {voice_file}, skipping")
                 continue
@@ -280,7 +308,15 @@ def process_files(input_dir: str, lang: str) -> None:
                 continue
             tailored_voice = tailor_content(voice_script, platform, 'voice_script', lang)
             with open(voice_file, 'w', encoding='utf-8') as f:
-                json.dump({'id': content_id, 'voice_script': tailored_voice, 'platform': platform}, f, ensure_ascii=False, indent=2)
+                json.dump({
+                    'id': content_id,
+                    'voice_script': tailored_voice,
+                    'platform': platform,
+                    'content_type': content_type,
+                    'tone': tone,
+                    'sentiment': sentiment,
+                    'version': version
+                }, f, ensure_ascii=False, indent=2)
             logger.info(f"Overwrote tailored voice script in {voice_file}")
             # Regenerate the corresponding MP3 file if necessary
             if not regenerate_tts(voice_file, tailored_voice, lang):

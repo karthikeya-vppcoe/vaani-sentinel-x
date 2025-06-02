@@ -117,7 +117,8 @@ async def process_blocks(blocks: List[Dict], sentiment: str, language: str) -> N
         try:
             tuned_text = await tune_sentiment(text, sentiment, language, client)
             block['text'] = tuned_text
-            block['sentiment'] = sentiment
+            block['sentiment'] = sentiment  # Explicitly set the sentiment field
+            logger.info(f"Set sentiment to {sentiment} for block ID {block_id} (language: {language})")
             with open(block['file_path'], 'w', encoding='utf-8') as f:
                 json.dump(block, f, ensure_ascii=False, indent=2)
             logger.info(f"Tuned and saved block ID {block_id} with {sentiment} sentiment")

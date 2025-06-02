@@ -2,8 +2,8 @@ import os
 import sys
 import logging
 import subprocess
+import json
 from datetime import datetime
-import signal
 from typing import Dict, Optional, List, Tuple
 
 # Logging setup for Command Center
@@ -54,6 +54,14 @@ AGENTS = {
     'security_guard': {
         'name': 'Security Guard',
         'path': '../agents/security_guard.py'
+    },
+    'analytics_collector': {
+        'name': 'Analytics Collector',
+        'path': '../agents/analytics_collector.py'
+    },
+    'strategy_recommender': {
+        'name': 'Strategy Recommender',
+        'path': '../agents/strategy_recommender.py'
     }
 }
 
@@ -66,7 +74,9 @@ PIPELINE: List[Tuple[str, str]] = [
     ("security_guard", "Agent E: Security & Compliance"),
     ("adaptive_targeter", "Agent I: Context-Aware Platform Targeter"),
     ("scheduler", "Agent D: Scheduler"),
-    ("publisher_sim", "Agent D: Publisher Simulator")
+    ("publisher_sim", "Agent D: Publisher Simulator"),
+    ("analytics_collector", "Agent K: Analytics Collector"),
+    ("strategy_recommender", "Adaptive Improvement Trigger")
 ]
 
 # Track active pipelines (language-specific)
@@ -206,6 +216,25 @@ def view_logs(agent: Optional[str] = None) -> None:
                 with open(os.path.join(log_dir, log_file), 'r', encoding='utf-8') as f:
                     print(f.read())
 
+def view_alerts() -> None:
+    """View security alerts from alert_dashboard.json."""
+    alerts_path = '../logs/alert_dashboard.json'
+    try:
+        if os.path.exists(alerts_path):
+            with open(alerts_path, 'r', encoding='utf-8') as f:
+                alerts = json.load(f)
+            print("\n=== Security Alerts ===")
+            for a in alerts:
+                print(f"ID: {a['content_id']} | Platform: {a['platform']} | Lang: {a['language']}")
+                print(f"Reason: {a['reason']}")
+                print(f"Snippet: {a['snippet']}")
+                print("-" * 50)
+        else:
+            print("No alerts found.")
+    except Exception as e:
+        logger.error(f"Failed to view alerts: {str(e)}")
+        print(f"Error: Failed to view alerts: {str(e)}")
+
 def kill_process(agent: str) -> None:
     """Kill a running agent process."""
     if agent not in active_processes:
@@ -245,6 +274,45 @@ def kill_pipeline(language: str) -> None:
     logger.info(f"Pipeline for language {language} has been terminated")
     print(f"Pipeline for language {language} has been terminated")
     del active_pipelines[pipeline_key]
+
+def view_analytics() -> None:
+    """View engagement metrics from analytics_db."""
+    metrics_path = '../analytics_db/post_metrics.json'
+    try:
+        if os.path.exists(metrics_path):
+            with open(metrics_path, 'r', encoding='utf-8') as f:
+                metrics = json.load(f)
+            print("\n=== Engagement Metrics ===")
+            for m in metrics:
+                print(f"ID: {m['content_id']} | Platform: {m['platform']} | Lang: {m['lang']}")
+                print(f"Content: {m['content']}")
+                print(f"Stats: {m['stats']}")
+                print(f"Performance: {m['performance']} | Sentiment: {m['sentiment']}")
+                print("-" * 50)
+        else:
+            print("No metrics found.")
+    except Exception as e:
+        logger.error(f"Failed to view analytics: {str(e)}")
+        print(f"Error: Failed to view analytics: {str(e)}")
+
+def view_suggestions() -> None:
+    """View strategy suggestions from analytics_db."""
+    suggestions_path = '../analytics_db/strategy_suggestions.json'
+    try:
+        if os.path.exists(suggestions_path):
+            with open(suggestions_path, 'r', encoding='utf-8') as f:
+                suggestions = json.load(f)
+            print("\n=== Strategy Suggestions ===")
+            for s in suggestions:
+                print(f"Platform: {s['platform']} | Lang: {s['lang']}")
+                print(f"Suggestion: {s['suggestion']}")
+                print(f"Basis: {s['basis']}")
+                print("-" * 50)
+        else:
+            print("No suggestions found.")
+    except Exception as e:
+        logger.error(f"Failed to view suggestions: {str(e)}")
+        print(f"Error: Failed to view suggestions: {str(e)}")
 
 def restart_agent(agent: str, sentiment: str = 'uplifting') -> None:
     """Restart a running agent by killing and then running it again."""
@@ -306,6 +374,7 @@ def main() -> None:
         print("    - Supported languages: en, hi, sa, all")
         print("    - --sentiment: Optional (values: uplifting, neutral, devotional)")
         print("  logs [agent]\n    View logs for a specific agent or all agents if no agent specified.")
+        print("  view-alerts\n    View security alerts from alert_dashboard.json.")
         print("  kill <agent>\n    Kill a running agent.")
         print("  kill-pipeline <language>\n    Kill a running pipeline for a specific language.")
         print("  restart <agent> [--sentiment <sentiment>]\n    Restart a specific agent.")
@@ -315,6 +384,7 @@ def main() -> None:
         print("  python command_center.py run miner_sanitizer")
         print("  python command_center.py run-pipeline en --sentiment neutral")
         print("  python command_center.py logs adaptive_targeter")
+        print("  python command_center.py view-alerts")
         print("  python command_center.py kill scheduler")
         print("  python command_center.py kill-pipeline en")
         print("  python command_center.py restart sentiment_tuner --sentiment devotional")
@@ -323,8 +393,25 @@ def main() -> None:
         sys.exit(1)
 
     command = sys.argv[1]
-
-    if command == 'run' and len(sys.argv) > 2:
+    if command == 'publish-preview' and len(sys.argv) > 3:
+        platform = sys.argv[2]
+        language = sys.argv[3]
+        if platform not in ['twitter', 'instagram', 'linkedin', 'sanatan']:
+            print(f"Invalid platform: {platform}. Supported: twitter, instagram, linkedin, sanatan")
+            sys.exit(1)
+        if language not in ALLOWED_LANGUAGES:
+            print(f"Invalid language: {language}. Supported: {', '.join(ALLOWED_LANGUAGES)}")
+            sys.exit(1)
+        run_agent('publisher_sim', language=language, args=['--preview'])
+    elif command == 'collect-analytics':
+        run_agent('analytics_collector')
+        view_analytics()
+    elif command == 'suggest-strategy':
+        run_agent('strategy_recommender')
+        view_suggestions()
+    elif command == 'view-alerts':
+        view_alerts()
+    elif command == 'run' and len(sys.argv) > 2:
         agent = sys.argv[2]
         sentiment = sys.argv[4] if len(sys.argv) > 4 and sys.argv[3] == '--sentiment' else 'uplifting'
         if agent not in AGENTS:

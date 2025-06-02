@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -9,8 +8,12 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
+import { Bar } from "react-chartjs-2"; // Import Bar component to fix TS2304
 
-// Fixed WarningIcon with proper sizing
+// Register ChartJS components
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+
+// WarningIcon component
 const WarningIcon = () => (
   <svg
     className="w-5 h-5 text-red-500 mr-2 flex-shrink-0"
@@ -28,15 +31,7 @@ const WarningIcon = () => (
   </svg>
 );
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-);
-
+// Interfaces for type safety
 interface ContentItem {
   id: string;
   type: "tweet" | "post" | "voice_script" | "voice";
@@ -69,25 +64,62 @@ interface AlertItem {
   message: string;
 }
 
+interface MetricItem {
+  post_id: string;
+  content_id: string;
+  platform: string;
+  language: string;
+  sentiment: string;
+  timestamp: string;
+  stats: {
+    likes: number;
+    comments: number;
+    shares: number;
+    views: number;
+    retweets?: number;
+    quotes?: number;
+  };
+}
+
+interface StrategyItem {
+  type: string;
+  platform: string;
+  language: string;
+  sentiment: string;
+  content_id: string;
+  score: number;
+  message: string;
+}
+
 export default function ContentPanel() {
+  // State management
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [sentimentItems, setSentimentItems] = useState<SentimentItem[]>([]);
   const [scores, setScores] = useState<ScoreItem[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [metrics, setMetrics] = useState<MetricItem[]>([]);
+  const [strategies, setStrategies] = useState<StrategyItem[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "content" | "dashboard" | "alerts" | "sentiment"
+    "content" | "dashboard" | "alerts" | "sentiment" | "analytics" | "strategies"
   >("content");
 
   const [loadingContent, setLoadingContent] = useState(true);
   const [loadingSentiment, setLoadingSentiment] = useState(true);
   const [loadingScores, setLoadingScores] = useState(true);
   const [loadingAlerts, setLoadingAlerts] = useState(true);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [loadingStrategies, setLoadingStrategies] = useState(true);
   const [errorContent, setErrorContent] = useState<string | null>(null);
   const [errorSentiment, setErrorSentiment] = useState<string | null>(null);
   const [errorScores, setErrorScores] = useState<string | null>(null);
   const [errorAlerts, setErrorAlerts] = useState<string | null>(null);
+  const [errorMetrics, setErrorMetrics] = useState<string | null>(null);
+  const [errorStrategies, setErrorStrategies] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<string | null>(null);
+  const [publishMessage, setPublishMessage] = useState<string | null>(null);
 
+  // Fetch data on mount
   useEffect(() => {
     const token = localStorage.getItem("token");
 
@@ -98,7 +130,7 @@ export default function ContentPanel() {
         return;
       }
       try {
-        const res = await fetch("http://localhost:5000/api/content", {
+        const res: Response = await fetch("http://localhost:5000/api/content", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
@@ -113,7 +145,7 @@ export default function ContentPanel() {
         }
       } catch (err) {
         setErrorContent("Failed to load content. Please try again.");
-        console.error(err);
+        console.error(`[${new Date().toISOString()}] fetchContent error:`, err);
       } finally {
         setLoadingContent(false);
       }
@@ -126,9 +158,12 @@ export default function ContentPanel() {
         return;
       }
       try {
-        const res = await fetch("http://localhost:5000/api/sentiment-content", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res: Response = await fetch(
+          "http://localhost:5000/api/sentiment-content",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         if (res.ok) {
           const items: SentimentItem[] = await res.json();
           const filteredItems = items
@@ -140,7 +175,10 @@ export default function ContentPanel() {
         }
       } catch (err) {
         setErrorSentiment("Failed to load sentiment content. Please try again.");
-        console.error(err);
+        console.error(
+          `[${new Date().toISOString()}] fetchSentimentContent error:`,
+          err
+        );
       } finally {
         setLoadingSentiment(false);
       }
@@ -153,7 +191,7 @@ export default function ContentPanel() {
         return;
       }
       try {
-        const res = await fetch("http://localhost:5000/api/scores", {
+        const res: Response = await fetch("http://localhost:5000/api/scores", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
@@ -164,7 +202,7 @@ export default function ContentPanel() {
         }
       } catch (err) {
         setErrorScores("Failed to load scores. Please try again.");
-        console.error(err);
+        console.error(`[${new Date().toISOString()}] fetchScores error:`, err);
       } finally {
         setLoadingScores(false);
       }
@@ -177,7 +215,7 @@ export default function ContentPanel() {
         return;
       }
       try {
-        const res = await fetch("http://localhost:5000/api/alerts", {
+        const res: Response = await fetch("http://localhost:5000/api/alerts", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
@@ -190,9 +228,107 @@ export default function ContentPanel() {
         }
       } catch (err) {
         setErrorAlerts("Failed to load alerts. Please try again.");
-        console.error(err);
+        console.error(`[${new Date().toISOString()}] fetchAlerts error:`, err);
       } finally {
         setLoadingAlerts(false);
+      }
+    };
+
+    const fetchMetrics = async () => {
+      if (!token) {
+        setErrorMetrics("Please log in to view analytics.");
+        setLoadingMetrics(false);
+        return;
+      }
+      try {
+        const res: Response = await fetch(
+          "http://localhost:5000/api/analytics",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        console.log(
+          `[${new Date().toISOString()}] fetchMetrics: HTTP status ${res.status}`
+        );
+        if (res.ok) {
+          const metricsData = await res.json();
+          console.log(
+            `[${new Date().toISOString()}] Received metrics data:`,
+            metricsData
+          );
+          if (Array.isArray(metricsData)) {
+            setMetrics(metricsData as MetricItem[]);
+          } else {
+            console.error(
+              `[${new Date().toISOString()}] Metrics data is not an array:`,
+              metricsData
+            );
+            setErrorMetrics("Invalid analytics data format.");
+            setMetrics([]);
+          }
+        } else {
+          setErrorMetrics(`Failed to load analytics: HTTP ${res.status}`);
+          console.error(
+            `[${new Date().toISOString()}] fetchMetrics: HTTP error ${res.status}`
+          );
+          setMetrics([]);
+        }
+      } catch (err) {
+        setErrorMetrics("Failed to load analytics. Please try again.");
+        console.error(`[${new Date().toISOString()}] fetchMetrics error:`, err);
+        setMetrics([]);
+      } finally {
+        setLoadingMetrics(false);
+      }
+    };
+
+    const fetchStrategies = async () => {
+      if (!token) {
+        setErrorStrategies("Please log in to view strategies.");
+        setLoadingStrategies(false);
+        return;
+      }
+      try {
+        const res: Response = await fetch(
+          "http://localhost:5000/api/strategies",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        console.log(
+          `[${new Date().toISOString()}] fetchStrategies: HTTP status ${res.status}`
+        );
+        if (res.ok) {
+          const strategiesData = await res.json();
+          console.log(
+            `[${new Date().toISOString()}] Received strategies data:`,
+            strategiesData
+          );
+          if (Array.isArray(strategiesData)) {
+            setStrategies(strategiesData as StrategyItem[]);
+          } else {
+            console.error(
+              `[${new Date().toISOString()}] Strategies data is not an array:`,
+              strategiesData
+            );
+            setErrorStrategies("Invalid strategies data format.");
+            setStrategies([]);
+          }
+        } else {
+          setErrorStrategies(`Failed to load strategies: HTTP ${res.status}`);
+          console.error(
+            `[${new Date().toISOString()}] fetchStrategies: HTTP error ${res.status}`
+          );
+          setStrategies([]);
+        }
+      } catch (err) {
+        setErrorStrategies("Failed to load strategies. Please try again.");
+        console.error(
+          `[${new Date().toISOString()}] fetchStrategies error:`,
+          err
+        );
+      } finally {
+        setLoadingStrategies(false);
       }
     };
 
@@ -200,8 +336,11 @@ export default function ContentPanel() {
     fetchSentimentContent();
     fetchScores();
     fetchAlerts();
+    fetchMetrics();
+    fetchStrategies();
   }, []);
 
+  // Utility functions
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
@@ -215,7 +354,7 @@ export default function ContentPanel() {
       return;
     }
     try {
-      const response = await fetch(url, {
+      const response: Response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error(`Failed: ${response.status}`);
@@ -229,8 +368,55 @@ export default function ContentPanel() {
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      console.error("Download failed:", err);
+      console.error(`[${new Date().toISOString()}] Download failed:`, err);
       alert("Failed to download file.");
+    }
+  };
+
+  const handlePublish = async (contentId: string, platform: string) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please log in to publish content.");
+      return;
+    }
+    setPublishing(contentId);
+    setPublishMessage(null);
+    try {
+      const endpointMap: Record<string, string> = {
+        instagram: "/instagram/post",
+        twitter: "/twitter/post",
+        linkedin: "/linkedin/post",
+      };
+      const endpoint = endpointMap[platform.toLowerCase()];
+      if (!endpoint) {
+        throw new Error(`Unsupported platform: ${platform}`);
+      }
+      const response = await fetch(`http://localhost:5000${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ contentId }),
+      });
+      if (!response.ok) throw new Error(`Failed: ${response.status}`);
+      const data = await response.json();
+      setPublishMessage(data.message);
+      // Refresh metrics after publishing
+      const metricsRes = await fetch("http://localhost:5000/api/analytics", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (metricsRes.ok) {
+        const metricsData = await metricsRes.json();
+        if (Array.isArray(metricsData)) {
+          setMetrics(metricsData as MetricItem[]);
+        }
+      }
+    } catch (err) {
+      console.error(`[${new Date().toISOString()}] Publish failed:`, err);
+      setPublishMessage(`Failed to publish to ${platform}.`);
+    } finally {
+      setPublishing(null);
     }
   };
 
@@ -238,7 +424,8 @@ export default function ContentPanel() {
     setAlerts([]);
   };
 
-  const chartData = {
+  // Chart data for the dashboard tab
+  const scoreChartData = {
     labels: scores.map((score) => `Content ${score.id}`),
     datasets: [
       {
@@ -259,7 +446,7 @@ export default function ContentPanel() {
     ],
   };
 
-  const chartOptions = {
+  const scoreChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -284,6 +471,14 @@ export default function ContentPanel() {
     },
   };
 
+  // Match content items with metrics, ensuring metric is defined
+  const matchedContentWithMetrics = contentItems
+    .map((item) => {
+      const metric = metrics.find((m) => m.content_id === item.id);
+      return metric ? { item, metric } : null;
+    })
+    .filter((entry): entry is { item: ContentItem; metric: MetricItem } => entry !== null);
+
   // Group content items by language
   const groupedContentItems = contentItems.reduce(
     (acc: Record<string, ContentItem[]>, item: ContentItem) => {
@@ -306,6 +501,15 @@ export default function ContentPanel() {
     {}
   );
 
+  // Sentiment styling map
+  const sentimentStyles: Record<string, string> = {
+    uplifting: "bg-yellow-100 text-yellow-800",
+    positive: "bg-green-100 text-green-800",
+    negative: "bg-red-200 text-red-800",
+    neutral: "bg-gray-100 text-gray-800",
+    inspirational: "bg-purple-100 text-purple-800",
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-6">
       <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">
@@ -314,7 +518,14 @@ export default function ContentPanel() {
 
       {/* Tabs */}
       <div className="flex justify-center mb-8 border-b border-gray-200">
-        {["content", "dashboard", "alerts", "sentiment"].map((tab) => (
+        {[
+          "content",
+          "dashboard",
+          "alerts",
+          "sentiment",
+          "analytics",
+          "strategies",
+        ].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as any)}
@@ -332,12 +543,14 @@ export default function ContentPanel() {
         ))}
       </div>
 
-      {/* Loading Spinner Component */}
+      {/* Loading Spinner */}
       {[
         loadingContent && activeTab === "content",
         loadingScores && activeTab === "dashboard",
         loadingAlerts && activeTab === "alerts",
         loadingSentiment && activeTab === "sentiment",
+        loadingMetrics && activeTab === "analytics",
+        loadingStrategies && activeTab === "strategies",
       ].some(Boolean) && (
         <div className="flex justify-center items-center py-8">
           <svg
@@ -406,11 +619,8 @@ export default function ContentPanel() {
                           </span>
                           <span
                             className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              item.sentiment === "positive"
-                                ? "bg-green-100 text-green-800"
-                                : item.sentiment === "negative"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-gray-100 text-gray-800"
+                              sentimentStyles[item.sentiment.toLowerCase()] ||
+                              "bg-gray-100 text-gray-800"
                             }`}
                           >
                             {item.sentiment || "neutral"}
@@ -462,10 +672,56 @@ export default function ContentPanel() {
                             item.url.split("/").pop() || "download"
                           )
                         }
-                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200 mr-2"
                       >
                         Download
                       </button>
+                      <div className="relative inline-block text-left">
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handlePublish(item.id, e.target.value);
+                              e.target.value = "";
+                            }
+                          }}
+                          disabled={publishing === item.id}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
+                        >
+                          <option value="">Publish to...</option>
+                          <option value="Instagram">Instagram</option>
+                          <option value="Twitter">Twitter</option>
+                          <option value="LinkedIn">LinkedIn</option>
+                        </select>
+                        {publishing === item.id && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <svg
+                              className="animate-spin h-5 w-5 text-white"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8v8h8a8 8 0 01-8 8 8 8 0 01-8-8z"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                      {publishMessage && publishing === item.id && (
+                        <p className="text-sm text-green-600 mt-2">
+                          {publishMessage}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -492,7 +748,7 @@ export default function ContentPanel() {
                 Content Scores
               </h3>
               <div className="h-96">
-                <Bar data={chartData} options={chartOptions} />
+                <Bar data={scoreChartData} options={scoreChartOptions} />
               </div>
             </div>
           )}
@@ -530,7 +786,9 @@ export default function ContentPanel() {
                     <WarningIcon />
                     <div className="flex-1">
                       <p className="text-sm text-gray-500 mb-1">
-                        <strong>{new Date(alert.timestamp).toLocaleString()}</strong>
+                        <strong>
+                          {new Date(alert.timestamp).toLocaleString()}
+                        </strong>
                       </p>
                       <p className="text-gray-800">{alert.message}</p>
                     </div>
@@ -594,11 +852,8 @@ export default function ContentPanel() {
                         </span>
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            item.sentiment === "positive"
-                              ? "bg-green-100 text-green-800"
-                              : item.sentiment === "negative"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-gray-100 text-gray-800"
+                            sentimentStyles[item.sentiment.toLowerCase()] ||
+                            "bg-gray-100 text-gray-800"
                           }`}
                         >
                           {item.sentiment || "neutral"}
@@ -617,6 +872,155 @@ export default function ContentPanel() {
                 </div>
               </div>
             ))
+          )}
+        </div>
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === "analytics" && !loadingMetrics && (
+        <div className="animate-fade-in">
+          {errorMetrics ? (
+            <div className="bg-red-50 text-red-600 p-4 rounded-lg text-center">
+              {errorMetrics}
+            </div>
+          ) : matchedContentWithMetrics.length === 0 ? (
+            <div className="bg-gray-50 text-gray-600 p-4 rounded-lg text-center">
+              No analytics available. Publish content to see metrics.
+            </div>
+          ) : (
+            <div className="bg-white p-6 rounded-xl shadow-md overflow-x-auto">
+              <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                Post Engagement Metrics
+              </h3>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Post ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Platform
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Content
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Language
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Sentiment
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Views
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Likes
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Shares
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Comments
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Retweets
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Quotes
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {matchedContentWithMetrics.map(({ item, metric }, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.post_id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.platform}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {item.content ? (
+                          <span className="line-clamp-2">{item.content}</span>
+                        ) : (
+                          "Voice content"
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.language}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.sentiment}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.stats.views}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.stats.likes}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.stats.shares}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.stats.comments}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.platform.toLowerCase() === "twitter"
+                          ? metric.stats.retweets ?? 0
+                          : "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {metric.platform.toLowerCase() === "twitter"
+                          ? metric.stats.quotes ?? 0
+                          : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Strategies Tab */}
+      {activeTab === "strategies" && !loadingStrategies && (
+        <div className="animate-fade-in">
+          {errorStrategies ? (
+            <div className="bg-red-50 text-red-600 p-4 rounded-lg text-center">
+              {errorStrategies}
+            </div>
+          ) : strategies.length === 0 ? (
+            <div className="bg-gray-50 text-gray-600 p-4 rounded-lg text-center">
+              No strategies available.
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">
+                Content Insights
+              </h3>
+              <div className="space-y-4">
+                {strategies.map((strategy, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-500 mb-1">
+                        <strong>{strategy.type.toUpperCase()}</strong> - Score:{" "}
+                        {strategy.score.toFixed(2)}
+                      </p>
+                      <p className="text-gray-800">{strategy.message}</p>
+                      <p className="text-sm text-gray-600">
+                        Platform: {strategy.platform}, Language:{" "}
+                        {strategy.language}, Sentiment: {strategy.sentiment},
+                        Content ID: {strategy.content_id}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}
