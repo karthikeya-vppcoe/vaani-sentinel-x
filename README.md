@@ -21,6 +21,11 @@ The system prioritizes backend intelligence, security, modularity, and voice-dri
  - Sentiment tuning (uplifting, neutral, devotional).
  - Context-aware platform targeting (hashtags, post formats, audio lengths).
  - Secure scheduling and simulated publishing.
+ - Simulated social media publishing to multiple platforms (Instagram, Twitter, LinkedIn) with platform-specific formatting.
+ - Preview mode for generated social media posts.
+ - Generation and storage of dummy engagement statistics (views, likes, shares, comments) for simulated posts.
+ - Feedback mechanism for content strategy based on performance metrics (e.g., "High-performing topics", "Underperforming formats").
+ - Placeholder for adaptive content strategy adjustment based on analytics (`adjust_future_content_strategy()`).
  - Web UI for monitoring, playback, and alert handling (with optional display of language and sentiment metadata).
  - Security modules for content flagging, encryption, and emergency data wiping.
  - Basic detection of harmful religious bias triggers.
@@ -34,14 +39,16 @@ The system prioritizes backend intelligence, security, modularity, and voice-dri
 ```bash
 vaani-sentinel-x/
  ├── agents/
- │   ├── miner_sanitizer.py         # Agent A: Sanitizes and structures raw data
+ │   ├── adaptive_targeter.py       # Adapts content for specific platforms
  │   ├── ai_writer_voicegen.py      # Agent B: Generates tweets, posts, and TTS
- │   ├── scheduler.py               # Agent D: Schedules posts
- │   ├── publisher_sim.py           # Agent D: Simulates publishing
- │   ├── security_guard.py          # Agent E: Flags and encrypts content
+ │   ├── analytics_collector.py    # Agent K: Collects and stores engagement metrics
+ │   ├── miner_sanitizer.py         # Agent A: Sanitizes and structures raw data
  │   ├── multilingual_pipeline.py   # Handles multilingual content processing
+ │   ├── publisher_sim.py           # Agent D & J: Simulates publishing, expanded for Akshara Pulse
+ │   ├── scheduler.py               # Agent D: Schedules posts
+ │   ├── security_guard.py          # Agent E: Flags and encrypts content
  │   ├── sentiment_tuner.py         # Adjusts content sentiment
- │   └── adaptive_targeter.py       # Adapts content for specific platforms
+ │   └── strategy_recommender.py   # Implements adjust_future_content_strategy()
  ├── web-ui/
  │   └── nextjs-voice-panel/        # Agent C: Secure Next.js UI
  ├── cli/
@@ -57,6 +64,8 @@ vaani-sentinel-x/
  │   ├── encrypted_eng/             # Encrypted English content archives
  │   ├── encrypted_hin/             # Encrypted Hindi content archives
  │   └── encrypted_san/             # Encrypted Sanskrit content archives
+ ├── analytics_db/
+ │   └── post_metrics.json         # Stores engagement metrics for simulated posts
  ├── kill_switch.py                 # Emergency data wipe
  └── README.md                      # Project documentation
 ```
@@ -69,11 +78,13 @@ vaani-sentinel-x/
 | Agent A | `miner_sanitizer.py` | Sanitizes and structures raw CSV data into verified JSON content blocks. |
 | Agent B | `ai_writer_voicegen.py` | Enhances content generation with adaptive styles (Formal for LinkedIn, Casual for Instagram, Neutral/Devotional for Sanatan voice assistants). Features dynamic TTS voice selection (Hindi/Sanskrit/English) using services like ElevenLabs Multilingual or Google Cloud TTS. Generates tweets, posts, voice scripts, and MP3s. |
 | Agent C | `web-ui/nextjs-voice-panel` | Next.js-based UI for viewing, downloading, and playing content with security dashboards. |
-| Agent D | `scheduler.py`, `publisher_sim.py` | Schedules posts. `publisher_sim.py` simulates publishing to mock social media endpoints, working with Agent I for platform-specific adaptations. |
+| Agent D | `scheduler.py`, `publisher_sim.py` | Schedules posts. `publisher_sim.py` (now also part of Agent J) simulates publishing to mock social media endpoints, working with Agent I for platform-specific adaptations and Agent J for Akshara Pulse features. |
 | Agent E | `security_guard.py` | Flags controversial content, encrypts archives (including per-language encryption for multilingual content with checksums), logs alerts, provides a kill switch, and includes basic detection of harmful religious bias triggers. |
 | Agent F | `multilingual_pipeline.py` | Expands Agent A to handle Hindi and Sanskrit text ingestion. Adds automatic language detection and auto-routes content for multilingual processing. |
 | Agent H | `sentiment_tuner.py` | New micro-agent to adjust sentiment (uplifting, neutral, devotional) of content before final generation. Sentiment tuning options selectable at runtime. |
 | Agent I | `adaptive_targeter.py` | Tailors hashtags, post formats, and audio lengths according to the platform (Instagram, Twitter, Spotify) when `publisher_sim.py` simulates posts. |
+| Agent J | `publisher_sim.py` (expanded), `agents/adaptive_targeter.py` (implicitly used) | Platform Publisher: Simulates posting to Instagram (Text + Voice thumbnail), Twitter (Short text + TTS snippet), and LinkedIn (Formatted post). Supports preview mode and auto-picks language/voice. Works in conjunction with Agent I for platform-specific formatting. |
+| Agent K | `analytics_collector.py`, `strategy_recommender.py` | Feedback & Analytics Collector: Generates dummy engagement stats (Views, Likes, Shares, Comments) for simulated posts, stores them in `analytics_db/post_metrics.json`. `strategy_recommender.py` includes `adjust_future_content_strategy()` to suggest content improvements based on top performers. |
 
 
 
@@ -260,6 +271,41 @@ This section provides a summary of key deliverables and development aspects rela
     *   [Placeholder for other specific challenges, blockers resolved, or improvements made during Phase 2 development.]
 
     *(Note: This subsection should be updated with actual experiences and specific details upon completion or during the course of Phase 2 development.)*
+
+## 🚀 Phase 3: "Akshara Pulse" – Platform Publisher + Analytics Agent
+
+Context: With multilingual generation, sentiment tuning, and voice output in place, the next step is to simulate social media publishing and capture user engagement metrics to inform future content creation. This will form the adaptive loop for the Sanatan AI Engine.
+
+**Objectives:**
+
+1.  **Agent J: Platform Publisher**
+    *   Simulates posting to 3 platforms:
+        *   Instagram (Text + Voice thumbnail)
+        *   Twitter (Short text + TTS snippet)
+        *   LinkedIn (Formatted post with title + summary + TTS)
+    *   Supports preview mode (generates a JSON/post object but doesn’t post).
+    *   Auto-picks language + voice based on content metadata.
+    *   Implemented in `agents/publisher_sim.py` (expanded).
+
+2.  **Agent K: Feedback & Analytics Collector**
+    *   For each simulated post, generates dummy engagement stats: Views, Likes, Shares, Comments (randomized but realistic).
+    *   Stores metrics in `analytics_db/post_metrics.json` and links to the original content ID.
+    *   Creates a feedback signal: “High-performing topics”, “Underperforming formats”.
+    *   Implemented in `agents/analytics_collector.py`.
+
+3.  **Loop Hook: Adaptive Improvement Trigger**
+    *   Placeholder function: `adjust_future_content_strategy()` in `agents/strategy_recommender.py`.
+    *   Reads top 3 performers of the week from `analytics_db/post_metrics.json`.
+    *   Suggests content formats (e.g., more devotional tone on LinkedIn).
+    *   This will connect to future reinforcement learning in Task 5.
+
+**File/Folder Additions:**
+
+*   `agents/analytics_collector.py`
+*   `agents/strategy_recommender.py`
+*   `analytics_db/post_metrics.json` (for storing post metrics)
+
+This phase focuses on creating an adaptive loop for content strategy by simulating publishing, gathering engagement analytics, and providing actionable feedback for future content generation.
 
 ## 🐛 Blockers Faced & Resolutions
 
