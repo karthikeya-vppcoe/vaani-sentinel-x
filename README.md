@@ -59,13 +59,15 @@ vaani-sentinel-x/
  │   ├── content_ready/             # Generated content (tweets, posts, TTS)
  │   └── multilingual_ready/        # Processed multilingual content
  ├── logs/                          # Security and process logs
+ ├── scheduled_posts/               # Stores the preview of the published posts
  ├── scheduler_db/                  # Scheduled posts database
  ├── archives/
  │   ├── encrypted_eng/             # Encrypted English content archives
  │   ├── encrypted_hin/             # Encrypted Hindi content archives
  │   └── encrypted_san/             # Encrypted Sanskrit content archives
  ├── analytics_db/
- │   └── post_metrics.json         # Stores engagement metrics for simulated posts
+ │   └── post_metrics.json          # Stores engagement metrics for simulated posts
+ │   └── strategy_suggestions.json  # Stores the content which need to improve 
  ├── kill_switch.py                 # Emergency data wipe
  └── README.md                      # Project documentation
 ```
