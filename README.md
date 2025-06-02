@@ -318,7 +318,7 @@ This phase focuses on creating an adaptive loop for content strategy by simulati
 | Audio Playback/Download Fails from Web UI                    | Updated `ContentPanel.tsx` in the Next.js frontend to correctly attach JWT tokens to download/play requests.   |
 
 # A video demo (screen recording, 3–5 min) 
-- [Demo_vedio](https://drive.google.com/file/d/1Yw040nSTrP5cFYrfGt4V_ifV2kjYFTjE/view?usp=sharing)
+- [Demo_vedio](https://drive.google.com/file/d/1kLs-cr8cYlcj7W7-6lzqBO6R3ktPueh5/view?usp=drive_link)
 
 ## 🚀 Future Improvements
 - Replace SQLite with PostgreSQL for production-grade scalability.
