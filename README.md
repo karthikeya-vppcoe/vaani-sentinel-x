@@ -59,13 +59,15 @@ vaani-sentinel-x/
  │   ├── content_ready/             # Generated content (tweets, posts, TTS)
  │   └── multilingual_ready/        # Processed multilingual content
  ├── logs/                          # Security and process logs
+ ├── scheduled_posts/               # Stores the preview of the published posts
  ├── scheduler_db/                  # Scheduled posts database
  ├── archives/
  │   ├── encrypted_eng/             # Encrypted English content archives
  │   ├── encrypted_hin/             # Encrypted Hindi content archives
  │   └── encrypted_san/             # Encrypted Sanskrit content archives
  ├── analytics_db/
- │   └── post_metrics.json         # Stores engagement metrics for simulated posts
+ │   └── post_metrics.json          # Stores engagement metrics for simulated posts
+ │   └── strategy_suggestions.json  # Stores the content which need to improve 
  ├── kill_switch.py                 # Emergency data wipe
  └── README.md                      # Project documentation
 ```
@@ -316,7 +318,7 @@ This phase focuses on creating an adaptive loop for content strategy by simulati
 | Audio Playback/Download Fails from Web UI                    | Updated `ContentPanel.tsx` in the Next.js frontend to correctly attach JWT tokens to download/play requests.   |
 
 # A video demo (screen recording, 3–5 min) 
-- [Demo_vedio](https://drive.google.com/file/d/1Yw040nSTrP5cFYrfGt4V_ifV2kjYFTjE/view?usp=sharing)
+- [Demo_vedio](https://drive.google.com/file/d/1kLs-cr8cYlcj7W7-6lzqBO6R3ktPueh5/view?usp=drive_link)
 
 ## 🚀 Future Improvements
 - Replace SQLite with PostgreSQL for production-grade scalability.
