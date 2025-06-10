@@ -1,0 +1,42 @@
+[
+  {
+    "user_id": "user_001",
+    "preferred_languages": ["en", "hi", "mr"],
+    "default_language": "en"
+  },
+  {
+    "user_id": "user_002",
+    "preferred_languages": ["ta", "te", "kn"],
+    "default_language": "ta"
+  },
+  {
+    "user_id": "user_003",
+    "preferred_languages": ["ml", "bn", "gu"],
+    "default_language": "ml"
+  },
+  {
+    "user_id": "user_004",
+    "preferred_languages": ["pa", "as", "hi"],
+    "default_language": "pa"
+  },
+  {
+    "user_id": "user_005",
+    "preferred_languages": ["es", "fr", "pt"],
+    "default_language": "es"
+  },
+  {
+    "user_id": "user_006",
+    "preferred_languages": ["de", "ru", "it"],
+    "default_language": "de"
+  },
+  {
+    "user_id": "user_007",
+    "preferred_languages": ["ja", "zh", "ar"],
+    "default_language": "ja"
+  },
+  {
+    "user_id": "user_008",
+    "preferred_languages": ["en", "ru", "bn"],
+    "default_language": "ru"
+  }
+]

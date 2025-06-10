@@ -25,12 +25,28 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 logger.handlers = [file_handler]
+logger.info("Initializing publisher_sim.py")
 
 # Constants
 CONTENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'content_ready'))
+METADATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'structured', 'metadata'))
+PREVIEW_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'translation_previews'))
 SCHEDULED_POSTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduled_posts'))
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduler_db', 'scheduled_posts.db'))
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key')
+
+def load_json(file_path: str) -> Dict:
+    """Load JSON file."""
+    logger.debug(f"Loading JSON: {file_path}")
+    if not os.path.exists(file_path):
+        logger.error(f"File not found: {file_path}")
+        raise FileNotFoundError(f"File not found: {file_path}")
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load {file_path}: {str(e)}")
+        raise
 
 def get_content_file(content_id: str, content_type: str, lang: str, platform: str) -> str:
     """Find the content file with precise pattern matching."""
@@ -76,16 +92,16 @@ def generate_jwt_token() -> str:
         logger.error(f"Failed to generate JWT token: {str(e)}")
         raise
 
-def format_content(content: Dict, content_type: str, platform: str, audio_file: str, lang: str) -> Dict:
-    """Format content for platform-specific posting."""
-    content_id = content.get('id', 'unknown')
-    content_text = content.get(content_type if content_type != 'voice' else 'voice_script', '')
-    sentiment = content.get('sentiment')  # Remove default 'neutral' to ensure we use the content file's value
-    if sentiment is None:
-        logger.error(f"No sentiment field found in content for ID {content_id}, platform {platform}, lang {lang}")
-        sentiment = 'neutral'  # Fallback only if the field is missing
+def format_content(content: Dict, content_type: str, platform: str, audio_file: str, lang: str, preview: Dict = None) -> Dict:
+    """Format content for platform-specific posting, using translation preview if provided."""
+    content_id = content.get('content_id', content.get('id', 'unknown'))
+    # Use translated text from preview if available, else fall back to original
+    content_text = preview.get('translated_text', content.get(content_type if content_type != 'voice' else 'voice_script', '')) if preview else content.get(content_type if content_type != 'voice' else 'voice_script', '')
+    sentiment = preview.get('sentiment', content.get('sentiment', 'neutral')) if preview else content.get('sentiment', 'neutral')
+    voice_tag = preview.get('voice_tag', '') if preview else ''
+    preferred_languages = content.get('preferred_languages', []) if preview else []
 
-    logger.info(f"Read sentiment '{sentiment}' for content ID {content_id}, platform {platform}, lang {lang}")
+    logger.info(f"Formatting content ID {content_id}, platform: {platform}, lang: {lang}, sentiment: {sentiment}")
 
     post_data = {
         'post_id': str(uuid.uuid4()),
@@ -93,37 +109,39 @@ def format_content(content: Dict, content_type: str, platform: str, audio_file: 
         'platform': platform,
         'language': lang,
         'sentiment': sentiment,
+        'voice_tag': voice_tag,
+        'preferred_languages': preferred_languages,
         'publish_time': datetime.now().isoformat(),
         'status': 'pending'
     }
 
     if platform == 'instagram':
-        post_data['content'] = f"{content_text}\n#Inspiration #Motivation"
+        post_data['content'] = f"{content_text}\n#Inspiration #Multilingual"
         post_data['audio_thumbnail'] = audio_file if content_type == 'voice' else ''
-        post_data['format'] = 'text + audio thumbnail'
+        post_data['format'] = 'multilingual text + audio thumbnail'
     elif platform == 'twitter':
         post_data['content'] = content_text[:280] if content_type == 'tweet' else content_text
         post_data['audio_snippet'] = audio_file if content_type == 'voice' else ''
-        post_data['format'] = 'short text + TTS snippet'
+        post_data['format'] = 'multilingual short text + TTS snippet'
     elif platform == 'linkedin':
         post_data['content'] = {
-            'title': f"Insight {content_id}",
+            'title': f"Multilingual Insight {content_id}",
             'summary': content_text
         }
         post_data['audio'] = audio_file if content_type == 'voice' else ''
-        post_data['format'] = 'title + summary + TTS'
+        post_data['format'] = 'multilingual title + summary + TTS'
     elif platform == 'sanatan':
         post_data['content'] = content_text
         post_data['audio'] = audio_file if content_type == 'voice' else ''
-        post_data['format'] = 'voice script + audio'
+        post_data['format'] = 'multilingual voice script + audio'
 
     return post_data
 
-def publish_to_platform(platform: str, content: Dict, content_type: str, audio_file: str, token: str, preview_mode: bool, lang: str) -> bool:
-    """Simulate publishing content to a platform."""
+def publish_to_platform(platform: str, content: Dict, content_type: str, audio_file: str, token: str, preview_mode: bool, lang: str, preview: Dict = None) -> bool:
+    """Simulate publishing content to a platform, using translation preview if provided."""
     try:
-        post_data = format_content(content, content_type, platform, audio_file, lang)
-        content_id = content.get('id', 'unknown')
+        post_data = format_content(content, content_type, platform, audio_file, lang, preview)
+        content_id = content.get('content_id', content.get('id', 'unknown'))
         content_text = post_data['content'] if isinstance(post_data['content'], str) else json.dumps(post_data['content'])
 
         if not preview_mode:
@@ -215,6 +233,57 @@ def publish_content(content_id: str, platform: str, content_type: str, token: st
         update_status(content_id, platform, lang, 'failed')
         return False
 
+def generate_multilingual_previews(content_id: str, content_type: str = 'post') -> List[Dict]:
+    """Generate 5 multilingual post previews for different languages and platforms."""
+    logger.info(f"Generating multilingual previews for content_id: {content_id}")
+    token = generate_jwt_token()
+    
+    # Define 5 language-platform combinations
+    preview_configs = [
+        {'lang': 'en', 'platform': 'instagram'},
+        {'lang': 'hi', 'platform': 'twitter'},
+        {'lang': 'mr', 'platform': 'linkedin'},
+        {'lang': 'ta', 'platform': 'sanatan'},
+        {'lang': 'te', 'platform': 'instagram'}
+    ]
+    
+    previews = []
+    for config in preview_configs:
+        lang = config['lang']
+        platform = config['platform']
+        
+        # Load translation preview
+        preview_file = os.path.join(PREVIEW_DIR, f"preview_{content_id}_{lang}.json")
+        if not os.path.exists(preview_file):
+            logger.error(f"Translation preview not found: {preview_file}")
+            continue
+        translation_preview = load_json(preview_file)
+        
+        # Load metadata for original content
+        metadata_file = os.path.join(METADATA_DIR, f"metadata_{content_id}_instagram.json")
+        content = {'content_id': content_id}  # Use content_id as fallback
+        if os.path.exists(metadata_file):
+            logger.debug(f"Found metadata file: {metadata_file}")
+            content = load_json(metadata_file)
+        else:
+            logger.warning(f"Metadata file not found: {metadata_file}, using fallback content_id: {content_id}")
+        
+        # Generate preview
+        audio_file = get_audio_file(content_id, lang, platform) if content_type == 'voice' else ''
+        success = publish_to_platform(platform, content, content_type, audio_file, token, preview_mode=True, lang=lang, preview=translation_preview)
+        if success:
+            # Find the generated post file
+            for filename in os.listdir(SCHEDULED_POSTS_DIR):
+                if filename.startswith(f"post_{content_id}_{platform}_") and filename.endswith('.json'):
+                    post_file = os.path.join(SCHEDULED_POSTS_DIR, filename)
+                    post_data = load_json(post_file)
+                    previews.append(post_data)
+                    logger.info(f"Added preview for {lang} on {platform}")
+                    break
+    
+    logger.info(f"Generated {len(previews)} multilingual previews for content_id: {content_id}")
+    return previews
+
 def run_publisher_sim(selected_language: str, preview_mode: bool = False, max_attempts: int = 3) -> None:
     """Run Agent J: Platform Publisher."""
     logger.info(f"Starting Agent J: Platform Publisher for language: {selected_language} (preview_mode: {preview_mode})")
@@ -250,11 +319,24 @@ def run_publisher_sim(selected_language: str, preview_mode: bool = False, max_at
 def main() -> None:
     """Main function to run the publisher simulator."""
     parser = argparse.ArgumentParser(description="Run Agent J: Platform Publisher")
-    parser.add_argument('language', choices=['en', 'hi', 'sa', 'all'], help="Language to process (en, hi, sa, all)")
+    parser.add_argument('language', nargs='?', choices=['en', 'hi', 'sa', 'all'], default=None, help="Language to process (en, hi, sa, all)")
     parser.add_argument('--preview', action='store_true', help="Run in preview mode (generate JSON without POST)")
+    parser.add_argument('--multilingual-preview', action='store_true', help="Generate 5 multilingual post previews")
+    parser.add_argument('--content-id', default='1', help="Content ID for multilingual previews")
     args = parser.parse_args()
 
-    run_publisher_sim(args.language, args.preview)
+    if args.multilingual_preview:
+        if args.language is None:
+            generate_multilingual_previews(args.content_id)
+        else:
+            print("Error: --multilingual-preview does not require a language argument")
+            return
+    else:
+        if args.language is None:
+            print("Error: language argument is required when not using --multilingual-preview")
+            parser.print_help()
+            return
+        run_publisher_sim(args.language, args.preview)
 
 if __name__ == "__main__":
     main()

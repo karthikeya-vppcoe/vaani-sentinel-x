@@ -19,12 +19,8 @@ content/structured/content_blocks.json
 content/multilingual_ready/en
 content/multilingual_ready/hi
 content/multilingual_ready/sa
-archives/encrypted_en
-archives/encrypted_hi
-archives/encrypted_sa
 analytics_db/post_metrics.json
 analytics_db/strategy_suggestions.json
-scheduled_posts/
 
 # Node modules (in case any exist in root)
 node_modules/

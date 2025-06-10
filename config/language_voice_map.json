@@ -1,0 +1,25 @@
+{
+  "languages": {
+    "en": "english_female_1",
+    "hi": "hindi_female_1",
+    "mr": "marathi_female_1",
+    "ta": "tamil_female_1",
+    "te": "telugu_male_1",
+    "kn": "kannada_female_1",
+    "ml": "malayalam_male_1",
+    "bn": "bengali_female_1",
+    "gu": "gujarati_male_1",
+    "pa": "punjabi_female_1",
+    "as": "assamese_male_1",
+    "es": "spanish_female_1",
+    "fr": "french_male_1",
+    "de": "german_male_2",
+    "ja": "japanese_female_1",
+    "zh": "chinese_female_1",
+    "ru": "russian_male_1",
+    "ar": "arabic_female_1",
+    "pt": "portuguese_male_1",
+    "it": "italian_female_1"
+  },
+  "fallback_voice": "english_female_1"
+}
