@@ -17,9 +17,10 @@ file_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
-logger.handlers = [file_handler]
+logger.handlers = [file_handler, logging.StreamHandler()]
+logger.info("Initializing analytics_collector.py")
 
-def generate_engagement_stats(platform: str, language: str, sentiment: str) -> Dict:
+def generate_engagement_stats(platform: str, language: str, tone: str) -> Dict:
     """Generate realistic dummy engagement stats."""
     ranges = {
         'instagram': {'likes': (100, 500), 'comments': (10, 50), 'shares': (20, 100), 'views': (500, 2000)},
@@ -28,7 +29,7 @@ def generate_engagement_stats(platform: str, language: str, sentiment: str) -> D
         'sanatan': {'likes': (50, 200), 'comments': (5, 30), 'shares': (10, 50), 'views': (200, 1000)}
     }
     stats = ranges.get(platform, ranges['instagram'])
-    multiplier = 1.2 if sentiment == 'devotional' and language in ['hi', 'sa'] else 1.0
+    multiplier = 1.2 if tone == 'uplifting' and language in ['hi', 'sa'] else 1.0
 
     return {
         'likes': int(random.uniform(*stats.get('likes', (0, 0))) * multiplier),
@@ -39,12 +40,11 @@ def generate_engagement_stats(platform: str, language: str, sentiment: str) -> D
         'quotes': int(random.uniform(*stats.get('quotes', (0, 0))) * multiplier) if platform == 'twitter' else 0
     }
 
-def run_analytics_collector(input_dir: str, output_dir: str) -> None:
+def run_analytics_collector(input_dir: str, output_dir: str, languages: List[str] = ['en', 'hi', 'sa']) -> None:
     """Run Agent K: Analytics Collector."""
-    logger.info("Starting Agent K: Analytics Collector")
+    logger.info(f"Starting Agent K: Analytics Collector for languages: {languages}")
     os.makedirs(output_dir, exist_ok=True)
 
-    # Clear post_metrics.json
     output_path = os.path.join(output_dir, 'post_metrics.json')
     if os.path.exists(output_path):
         os.remove(output_path)
@@ -61,21 +61,26 @@ def run_analytics_collector(input_dir: str, output_dir: str) -> None:
             post_id = post.get('post_id', 'unknown')
             content_id = post.get('content_id', 'unknown')
             platform = post.get('platform', 'unknown')
-            language = post.get('language', 'en')  # This will now be correct (hi, sa, or en)
-            sentiment = post.get('sentiment', 'neutral')
+            language = post.get('language', 'en')
+            if language not in languages:
+                logger.info(f"Skipping post {post_id} (language {language} not in {languages})")
+                continue
+            tone = post.get('tone', 'neutral')
+            content_type = 'voice_script' if platform == 'sanatan' else 'post'
 
-            stats = generate_engagement_stats(platform, language, sentiment)
+            stats = generate_engagement_stats(platform, language, tone)
             metric = {
                 'post_id': post_id,
                 'content_id': content_id,
                 'platform': platform,
                 'language': language,
-                'sentiment': sentiment,
+                'tone': tone,
+                'content_type': content_type,
                 'timestamp': datetime.now().isoformat(),
                 'stats': stats
             }
             metrics.append(metric)
-            logger.info(f"Generated stats for post ID {post_id} (content ID: {content_id}, platform: {platform})")
+            logger.info(f"Generated stats for post ID {post_id} (content ID: {content_id}, platform: {platform}, lang: {language})")
         except Exception as e:
             logger.error(f"Failed to process {file_path}: {str(e)}")
 

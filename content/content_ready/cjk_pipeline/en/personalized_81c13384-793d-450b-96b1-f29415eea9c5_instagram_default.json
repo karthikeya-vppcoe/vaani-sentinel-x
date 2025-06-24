@@ -1,0 +1,22 @@
+{
+  "content_id": "81c13384-793d-450b-96b1-f29415eea9c5",
+  "platform": "instagram",
+  "language": "en",
+  "user_id": "default",
+  "translated_text": "The sun rises in the east.",
+  "personalized_text": "Sunrise!",
+  "tone": "casual",
+  "voice_tag": "english_female_casual_1",
+  "confidence_score": 0.99,
+  "source_language": "zh",
+  "sentiment": "uplifting",
+  "preferred_tone": "casual",
+  "pipeline": "cjk_pipeline",
+  "timestamp": "2025-06-24T09:59:41.022324+00:00",
+  "sentiment_tuned_text": "Good morning, sunshine! Starting the day off right with a beautiful sunrise. New day, new possibilities! #SunriseVibes #PositiveVibesOnly",
+  "text_history": {
+    "translated": "The sun rises in the east.",
+    "personalized": "Sunrise!",
+    "sentiment_tuned": "Good morning, sunshine! Starting the day off right with a beautiful sunrise. New day, new possibilities! #SunriseVibes #PositiveVibesOnly"
+  }
+}

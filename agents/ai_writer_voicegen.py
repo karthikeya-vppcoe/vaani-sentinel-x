@@ -4,20 +4,22 @@ import logging
 import glob
 import re
 import asyncio
-import shutil
-import sys
-from typing import Dict, List
-from groq import AsyncGroq
-from gtts import gTTS
 import uuid
 import argparse
+from typing import Dict, List
+from groq import AsyncGroq
+from datetime import datetime, timezone
+from tenacity import retry, stop_after_attempt, wait_fixed
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Logging setup for Agent G (Adaptive AI Writer & Voice Generator)
 USER_ID = 'agent_g_user'
 logger = logging.getLogger('ai_writer_voicegen')
 logger.setLevel(logging.INFO)
 
-# Ensure logs directory exists relative to the script's location
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logs_dir = os.path.join(script_dir, '..', 'logs')
 os.makedirs(logs_dir, exist_ok=True)
@@ -27,10 +29,14 @@ file_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
-logger.handlers = [file_handler]
+logger.handlers = [file_handler, logging.StreamHandler()]
+
+# Supported languages and platforms
+SUPPORTED_LANGUAGES = ['en', 'hi', 'sa']
+SUPPORTED_PLATFORMS = ['instagram', 'twitter', 'linkedin', 'sanatan']
 
 def clean_text_for_tts(text: str) -> str:
-    """Remove emojis and invalid characters for TTS (Task 2: Agent G)."""
+    """Remove emojis and invalid characters for TTS."""
     emoji_pattern = re.compile(
         "["
         "\U0001F600-\U0001F64F"
@@ -50,65 +56,35 @@ def clean_text_for_tts(text: str) -> str:
 
 def standardize_formatting(text: str, language: str) -> str:
     """Standardize formatting and punctuation across languages."""
-    # Remove extra asterisks and colons in lists
-    text = re.sub(r'\*+', '', text)
-    text = re.sub(r':\s*(?=\w)', '- ', text)  # Replace colons in lists with hyphens
-    
-    # Fix capitalization in English (don't capitalize mid-sentence)
-    if language == 'en':
-        sentences = text.split('. ')
-        sentences = [s[0].upper() + s[1:].lower() if len(s) > 1 else s.upper() for s in sentences]
-        text = '. '.join(sentences)
-        # Ensure proper sentence-ending punctuation
-        lines = text.split('\n')
-        standardized_lines = []
-        for line in lines:
-            line = line.strip()
-            if line and not line.endswith(('.', '!', '?')):
-                line += '.'
-            # Capitalize specific terms
-            line = line.replace('ai', 'AI').replace('internet things', 'Internet of Things')
-            standardized_lines.append(line)
-        text = '\n'.join(standardized_lines)
-    
-    # For Hindi and Sanskrit, use standardize_punctuation
-    if language in ['hi', 'sa']:
-        text = standardize_punctuation(text, language)
-    
-    return text
-
-def standardize_punctuation(text: str, language: str) -> str:
-    """Standardize punctuation for Hindi and Sanskrit content."""
     text = re.sub(r'\s+', ' ', text)
     lines = text.split('\n')
     standardized_lines = []
     for line in lines:
         line = line.strip()
-        if line and not line.endswith(('।', '!', '?', '॥')):
-            if language == 'hi':
+        if line:
+            if language == 'en' and not line.endswith(('.', '!', '?')):
+                line += '.'
+            elif language == 'hi' and not line.endswith('।'):
                 line += '।'
-            elif language == 'sa':
+            elif language == 'sa' and not line.endswith('॥'):
                 line += '॥'
-        standardized_lines.append(line)
+            standardized_lines.append(line)
     text = '\n'.join(standardized_lines)
     if language == 'sa':
         text = text.replace(':', '')
+    if language == 'en':
+        text = text.replace('ai', 'AI').replace('internet things', 'Internet of Things')
     return text
 
 def correct_grammar(text: str, language: str) -> str:
-    """Correct common grammatical errors in English, Hindi, and Sanskrit."""
+    """Correct common grammatical errors."""
     if language == 'en':
-        # Add missing articles
         text = re.sub(r'\b(sense|new chance|vast expanse|blue hue|clean slate|stepping stone|human touch|driving force|better world|era|infinite possibilities)\b', r'a \1', text, flags=re.IGNORECASE)
-        text = re.sub(r'\b(joys) that life', r'the \1 that life', text, flags=re.IGNORECASE)
-        # Fix prepositions
         text = re.sub(r'for better', 'for the better', text, flags=re.IGNORECASE)
         text = re.sub(r'opening doors a', 'opening doors to a', text, flags=re.IGNORECASE)
-        # Fix verb agreement
         text = re.sub(r'you ready soar', 'are you ready to soar', text, flags=re.IGNORECASE)
     elif language == 'hi':
-        # Fix common Hindi grammatical errors
-        text = re.sub(r'हर औरत', 'हर रात', text)  # Typo correction
+        text = re.sub(r'हर औरत', 'हर रात', text)
         text = re.sub(r'जलाये रखों', 'जलाए रखें', text)
         text = re.sub(r'आसमान तरह', 'आसमान की तरह', text)
         text = re.sub(r'लोगों लिए', 'लोगों के लिए', text)
@@ -118,8 +94,7 @@ def correct_grammar(text: str, language: str) -> str:
         text = re.sub(r'क्योंक्यू', 'क्यों', text)
         text = re.sub(r'स्त्रोत', 'स्रोत', text)
     elif language == 'sa':
-        # Fix sandhi and case endings
-        text = re.sub(r'íृत्तिः', 'वृत्तिः', text)  # Typo correction
+        text = re.sub(r'íृत्तिः', 'वृत्तिः', text)
         text = re.sub(r'नम्भवे', 'नमः भवे', text)
         text = re.sub(r'शुभकर्मा', 'शुभकर्मणा', text)
         text = re.sub(r'स्थिरा', 'स्थिरः', text)
@@ -128,13 +103,9 @@ def correct_grammar(text: str, language: str) -> str:
     return text
 
 def reduce_repetition(text: str) -> str:
-    """Reduce repetitive phrases in the content."""
-    # Split by sentences (for English and Hindi) or lines (for Sanskrit)
-    if '।' in text or '॥' in text:
-        lines = text.split('।') if '।' in text else text.split('॥')
-    else:
-        lines = text.split('. ')
-    
+    """Reduce repetitive phrases."""
+    separator = '।' if '।' in text else ('॥' if '॥' in text else '.')
+    lines = text.split(separator)
     seen_phrases = set()
     unique_lines = []
     for line in lines:
@@ -142,289 +113,391 @@ def reduce_repetition(text: str) -> str:
         if line and line not in seen_phrases:
             seen_phrases.add(line)
             unique_lines.append(line)
-        elif line in seen_phrases:
+        elif line:
             logger.warning(f"Removed repetitive line: {line}")
-    
-    # Rejoin with appropriate separator
-    separator = '. ' if '.' in text else ('। ' if '।' in text else '॥ ')
-    text = separator.join(unique_lines)
-    
-    # Reduce word-level repetition
-    words = text.split()
-    word_counts = {}
-    for i, word in enumerate(words):
-        word_counts[word] = word_counts.get(word, 0) + 1
-        if word_counts[word] > 3:
-            logger.warning(f"Reducing repetition of word/phrase: {word}")
-            words[i] = ''
-    text = ' '.join(word for word in words if word)
-    
-    return text
+    return f'{separator} '.join(unique_lines).strip()
 
 def clean_generated_content(content: str, language: str) -> str:
-    """Clean the generated content to ensure it’s in the specified language, removing translations, hashtags, and commentary."""
-    # Remove hashtags
+    """Clean content, removing hashtags, commentary, and non-target language text."""
     content = re.sub(r'#\w+\s*', '', content)
-    
-    # Remove instructional notes and commentary
-    content = re.sub(r'\(\s*pause\s*\)', '', content, flags=re.IGNORECASE)
-    content = re.sub(r'(Morning mantras|Evening reflections)\)\s*', '', content, flags=re.IGNORECASE)
-    content = re.sub(r'This script designed be uplifting.*?(?=\n|$)', '', content, flags=re.IGNORECASE)
-    content = re.sub(r'^(Professional and formal post|Rewritten version of the post)[^\n]*\n', '', content, flags=re.IGNORECASE)
-    content = re.sub(r'Translation:.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'Feel free to adjust.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'Here(?: is|\'s) a.*?:?\n?', '', content, flags=re.DOTALL)
-    content = re.sub(r'This post maintains.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'This post aims.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'Let me know if.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'This is a.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'voice script suitable.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'This script aims.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'Example:.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'tweet (?:for|suitable for) LinkedIn:?\n?', '', content, flags=re.DOTALL)
-    content = re.sub(r'\(you can add the specific name of the initiative\)', '', content)
-    content = re.sub(r'\*\*.*?:?\*\*\n?', '', content)  # Remove headings like **Title:**
-    content = re.sub(r'\[.*?\]', '', content)  # Remove bracketed notes like [Namaste, a gentle tone]
-    content = re.sub(r'I hope this script meets.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'End of (script|update)\n?', '', content, flags=re.DOTALL)
-    content = re.sub(r'Sources:.*?(?=\n|$)', '', content, flags=re.DOTALL)
-    content = re.sub(r'\* \[Insert.*?\]', '', content, flags=re.DOTALL)
-    
-    # For Hindi and Sanskrit, remove English text and retain Devanagari script
+    content = re.sub(r'\(\s*[^\)]*\s*\)', '', content)
+    content = re.sub(r'(Morning mantras|Evening reflections|Translation|This script|Rewritten version|Feel free|Here is|This post|Let me know|Example|tweet for|voice script|suitable for|I hope|End of|Sources|\[Insert)[^\n]*?(?=\n|$)', '', content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r'\*\*.*?:?\*\*\n?', '', content)
+    content = re.sub(r'\[.*?\]', '', content)
     if language in ['hi', 'sa']:
         content = re.sub(r'[a-zA-Z0-9_]+', '', content)
         content = re.sub(r'[\[\]\(\)\.\!\?]', '', content)
         lines = content.split('\n')
-        devanagari_lines = []
-        for line in lines:
-            if re.search(r'[\u0900-\u097F]', line):
-                devanagari_lines.append(line.strip())
-            else:
-                logger.warning(f"Removed English line from {language} content: {line}")
+        devanagari_lines = [line.strip() for line in lines if re.search(r'[\u0900-\u097F]', line)]
         content = '\n'.join(devanagari_lines)
-    
-    # Reduce repetition
     content = reduce_repetition(content)
-    
-    # Standardize formatting and punctuation
     content = standardize_formatting(content, language)
-    
-    # Correct grammar
     content = correct_grammar(content, language)
-    
-    # Remove extra newlines and whitespace
     content = re.sub(r'\n\s*\n+', '\n', content).strip()
+    if language == 'sa':
+        content = re.sub(r'(शान्तिः\s*){2,}', 'शान्तिः ', content)
+        content = re.sub(r'(\b\w+\b)\s*\1+', r'\1', content)
     return content
 
-def truncate_tweet(text: str, max_length: int = 280) -> str:
-    """Truncate tweet to fit within max_length characters and ensure it ends properly."""
-    if len(text) <= max_length:
+def estimate_word_count(text: str, language: str) -> int:
+    """Estimate word count for content length validation."""
+    if language in ['hi', 'sa']:
+        return len(re.findall(r'[\u0900-\u097F]+', text))
+    return len(text.split())
+
+def truncate_to_word_limit(text: str, language: str, max_words: int) -> str:
+    """Truncate text to max word count, preserving sentence integrity."""
+    separator = '।' if language in ['hi', 'sa'] else '.'
+    sentences = text.split(separator)
+    current_count = 0
+    truncated_sentences = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        words = re.findall(r'[\u0900-\u097F]+', sentence) if language in ['hi', 'sa'] else sentence.split()
+        if current_count + len(words) <= max_words:
+            truncated_sentences.append(sentence)
+            current_count += len(words)
+        else:
+            break
+    truncated = f'{separator} '.join(truncated_sentences).strip()
+    return standardize_formatting(truncated + (separator if truncated else ''), language)
+
+def pad_to_word_limit(text: str, language: str, min_words: int, content_type: str, platform: str) -> str:
+    """Pad text to minimum word count with context-aware content."""
+    current_count = estimate_word_count(text, language)
+    if current_count >= min_words:
         return text
-    # Find the last complete sentence within the limit
-    truncated = text[:max_length]
-    last_period = truncated.rfind('.')
-    if last_period != -1 and last_period > 0:
-        return truncated[:last_period + 1]
-    # If no period, truncate at the last space and add a period
-    last_space = truncated.rfind(' ')
-    if last_space != -1:
-        return truncated[:last_space] + '.'
-    return truncated + '.'
+    padding = {
+        'en': {
+            'post': {
+                'instagram': ' Embrace today with positivity and joy!',
+                'twitter': ' Seize the day with enthusiasm!',
+                'linkedin': ' Start today with purpose and positivity.'
+            },
+            'voice_script': ' May this day bring peace and purpose to your heart.'
+        },
+        'hi': {
+            'post': {
+                'instagram': ' आज के दिन को सकारात्मकता और खुशी के साथ अपनाएं।',
+                'twitter': ' आज उत्साह के साथ दिन शुरू करें।',
+                'linkedin': ' आज उद्देश्य और सकारात्मकता के साथ शुरू करें।'
+            },
+            'voice_script': ' यह दिन आपके हृदय में शांति और उद्देश्य लाए।'
+        },
+        'sa': {
+            'post': {
+                'instagram': ' सर्वं सौम्यं भवतु। शान्तिः॥',
+                'twitter': ' सर्वं शुभं भवतु।',
+                'linkedin': ' सर्वं धर्मेन संनादति।'
+            },
+            'voice_script': ' सर्वं सौम्यं भवतु। शान्तिः॥'
+        }
+    }
+    while current_count < min_words:
+        pad_text = padding.get(language, {}).get(content_type, {}).get(platform, padding.get(language, {}).get(content_type, ''))
+        text = f"{text} {pad_text}".strip()
+        current_count = estimate_word_count(text, language)
+    return standardize_formatting(text, language)
 
-async def generate_content(text: str, content_type: str, tone: str, language: str, sentiment: str, client: AsyncGroq = None) -> Dict:
-    """Generate content with specified tone and sentiment (Task 2: Agent G)."""
-    if "initiative" in text.lower() and "learn about this initiative" in text.lower():
-        text = text.replace("Learn about this initiative", "Learn about the 'Clean Oceans Initiative,' which aims to reduce plastic waste in our oceans to protect marine life and promote a cleaner environment.")
+def get_sanskrit_fallback(text: str, content_type: str, platform: str) -> str:
+    """Generate context-aware Sanskrit fallback for short/repetitive content."""
+    fallbacks = {
+        'sun': {
+            'post': {
+                'instagram': "सूर्यः पूर्वदिशि उदयति। किरणैः विश्वं संनादति। नवं दिनं समृद्धं भवति। आनन्देन प्रभातं प्रेरति। जीवनं धर्मेन संनादति। सर्वं शुभं भवतु। शान्तिः॥",
+                'twitter': "सूर्यः पूर्वदिशि उदयति। किरणैः विश्वं संनादति। नवं दिनं शुभं भवतु। आनन्देन प्रभातं प्रेरति। शान्तिः॥",
+                'linkedin': "सूर्यः पूर्वदिशि उदयति। किरणैः विश्वं संनादति। नवं दिनं समृद्धं भवति। धर्मेन जीवनं प्रेरति। सर्वं शुभं भवतु। शान्तिः॥"
+            },
+            'voice_script': "सूर्यः पूर्वदिशि उदयति। तस्य किरणैः विश्वं संनादति। नवं दिनं समृद्धं भवति। आनन्देन जीवनं प्रेरति। धर्मः सत्यं च मार्गः। सर्वं सौम्यं भवतु। शान्तिः॥ प्रभातस्य शान्त्या सर्वं विश्वं संनादति। जीवनं सत्येन संनादति।"
+        },
+        'shiva': {
+            'post': {
+                'instagram': "ॐ नमः शिवाय। शिवः विश्वस्य आधारः। कृपया जीवनं पावनं भवति। शान्तिः सर्वत्र प्रसारति। धर्मेन संनादति। सर्वं शुभं भवतु। शान्तिः॥",
+                'twitter': "ॐ नमः शिवाय। शिवः विश्वस्य आधारः। कृपया जीवनं पावनं भवति। सर्वं शुभं भवतु। शान्तिः॥",
+                'linkedin': "ॐ नमः शिवाय। शिवः विश्वस्य आधारः। कृपया जीवनं पावनं भवति। धर्मेन शान्तिः प्रसारति। सर्वं शुभं भवतु। शान्तिः॥"
+            },
+            'voice_script': "ॐ नमः शिवाय। शिवः सर्वं विश्वस्य आधारः। तस्य कृपया जीवनं पावनं भवति। ध्यानं शान्तिं ददाति। धर्मः सत्यं च मार्गः। सर्वं शुभं भवतु। शान्तिः॥ ध्यानेन जीवनं समृद्धं भवति। सर्वं विश्वं शान्त्या संनादति।"
+        },
+        'default': {
+            'post': {
+                'instagram': "विद्या विनयं ददाति। विनयात् धर्मः जायते। धर्मात् सुखं सम्भवति। प्रभातस्य शान्तिः विश्वं प्रेरति। सत्यं जीवनस्य आधारः। सर्वं सौम्यं भवतु। शान्तिः॥",
+                'twitter': "विद्या विनयं ददाति। विनयात् धर्मः जायते। सुखं सम्भवति। प्रभातस्य शान्तिः प्रेरति। सर्वं शुभं भवतु। शान्तिः॥",
+                'linkedin': "विद्या विनयं ददाति। विनयात् धर्मः जायते। धर्मात् सुखं सम्भवति। जीवनं धर्मेन संनादति। सर्वं सौम्यं भवतु। शान्तिः॥"
+            },
+            'voice_script': "विद्या विनयं ददाति। विनयात् धर्मः जायते। धर्मात् सुखं सम्भवति। प्रभातस्य शान्तिः सर्वं प्रेरति। सत्यं जीवनस्य आधारः। सर्वं सौम्यं भवतु। शान्तिः॥ जीवनं धर्मेन संनादति। विश्वं शान्त्या समृद्धं भवति।"
+        }
+    }
+    key = 'sun' if 'सूर्य' in text or 'sun' in text.lower() else 'shiva' if 'शिव' in text or 'shiva' in text.lower() else 'default'
+    return fallbacks[key][content_type].get(platform, fallbacks[key][content_type]) if content_type == 'post' else fallbacks[key][content_type]
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+async def generate_content(text: str, content_type: str, tone: str, language: str, sentiment: str, platform: str, client: AsyncGroq = None) -> Dict:
+    """Generate content with specified tone, sentiment, and platform using Groq."""
     tone_prompts = {
-        'formal': 'Write in a professional and formal tone suitable for LinkedIn.',
-        'casual': 'Write in a friendly and casual tone suitable for Instagram.',
-        'devotional': 'Write in a neutral and devotional tone suitable for Sanatan voice assistants.'
+        'casual': 'Write in a friendly and casual tone suitable for social media.',
+        'professional': 'Write in a professional and polished tone suitable for LinkedIn.',
+        'devotional': 'Write in a neutral and devotional tone suitable for Sanatan voice assistants, keeping it 20–30 seconds long.'
     }
     sentiment_prompts = {
         'uplifting': 'Ensure the content has an uplifting and positive tone.',
         'neutral': 'Ensure the content has a neutral and factual tone.',
         'devotional': 'Ensure the content has a devotional and spiritual tone.'
     }
-    tone_instruction = tone_prompts.get(tone, '')
-    sentiment_instruction = sentiment_prompts.get(sentiment, '')
-
     language_instructions = {
         'en': 'Generate the content entirely in English.',
         'hi': 'Generate the content entirely in Hindi using Devanagari script. Do not include English translations, hashtags, or commentary.',
         'sa': 'Generate the content entirely in Sanskrit using Devanagari script. Ensure the content is meaningful, non-repetitive, and reflective of Sanatan philosophical or devotional themes. Do not include English translations, hashtags, or commentary.'
     }
-    lang_instruction = language_instructions.get(language, 'Generate the content in the specified language.')
+    word_limits = {
+        'post': {
+            'instagram': (30, 50),
+            'twitter': (20, 30),
+            'linkedin': (30, 50)
+        },
+        'voice_script': {
+            'sanatan': (50, 100) if language == 'en' else (30, 60)
+        }
+    }
+    min_words, max_words = word_limits[content_type][platform]
+    prompt = f"{tone_prompts.get(tone, '')} {sentiment_prompts.get(sentiment, '')} {language_instructions.get(language, '')} Create a {content_type} for {platform} based on: {text}. Ensure the content is between {min_words} and {max_words} words."
     
-    # Ensure consistent scope for tech advancements across languages
-    if "technology" in text.lower() or "प्रौद्योगिकी" in text:
-        prompt = f"{tone_instruction} {sentiment_instruction} {lang_instruction} Create a {content_type} about recent developments in technology, including advancements in artificial intelligence, 5G networks, blockchain, and sustainable energy solutions."
-    elif text == "इस कारण को जानें" and language == 'hi':
-        prompt = f"{tone_instruction} {sentiment_instruction} {lang_instruction} Create a {content_type} about understanding the reasons behind the success of ancient civilizations, their contributions to humanity, and how we can learn from their history."
-    else:
-        prompt = f"{tone_instruction} {sentiment_instruction} {lang_instruction} Create a {content_type} based on: {text}"
+    # Log input parameters for debugging
+    logger.debug(f"Generating content: content_type={content_type}, tone={tone}, lang={language}, platform={platform}, prompt={prompt[:100]}...")
     
     if not client:
-        logger.info(f"No Groq API client, using fallback text for {content_type} (tone: {tone}, lang: {language})")
-        return {'content': text, 'tone': tone, 'sentiment': sentiment, 'language': language}
+        logger.info(f"No Groq client, using fallback text for {content_type} (tone: {tone}, lang: {language}, platform: {platform})")
+        content = text if content_type == 'post' else get_sanskrit_fallback(text, content_type, platform) if language == 'sa' else text
+        content = truncate_to_word_limit(content, language, max_words)
+        content = pad_to_word_limit(content, language, min_words, content_type, platform)
+        return {'content': content, 'tone': tone, 'sentiment': sentiment, 'language': language}
     
     try:
-        max_tokens = 270 if content_type == 'tweet' else 1000  # Reduced for tweets to avoid truncation
+        max_tokens = 300 if content_type == 'post' else 500
         response = await client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.3-70b-versatile",
             max_tokens=max_tokens
         )
         content = response.choices[0].message.content.strip()
-        
         content = clean_generated_content(content, language)
-        
-        if language == 'sa':
-            lines = content.split('\n')
-            phrase_counts = {}
-            for line in lines:
-                line = line.strip()
-                if line:
-                    phrase_counts[line] = phrase_counts.get(line, 0) + 1
-            if any(count > 2 for count in phrase_counts.values()) or len(content) < 20:
-                logger.warning(f"Sanskrit content is repetitive or too short, generating fallback: {content}")
-                if "ॐ नमः शिवाय" in text:
-                    content = "ॐ नमः शिवाय। शिवः सर्वं विश्वस्य आधारः। तस्य कृपया जीवनं पावनं भवति। सर्वं शिवमयं विश्वं नमति।"
-                elif "विद्या विनयं ददाति" in text:
-                    content = "विद्या विनयं ददाति। विनयात् धर्मः जायते। धर्मात् सुखं सम्भवति। सुखेन जीवनं पूर्णं भवति।"
-        
-        if content_type == 'tweet':
-            content = truncate_tweet(content)
-        
-        return {'content': content, 'tone': tone, 'sentiment': sentiment, 'language': language}
+        content = truncate_to_word_limit(content, language, max_words)
+        content = pad_to_word_limit(content, language, min_words, content_type, platform)
+        word_count = estimate_word_count(content, language)
+        if language == 'sa' and (word_count < min_words or re.search(r'(\b\w+\b).*?\1', content)):
+            logger.warning(f"Sanskrit content is too short ({word_count} words) or repetitive: {content}")
+            content = get_sanskrit_fallback(text, content_type, platform)
+            content = truncate_to_word_limit(content, language, max_words)
+            content = pad_to_word_limit(content, language, min_words, content_type, platform)
+            word_count = estimate_word_count(content, language)
+        if word_count < min_words or word_count > max_words:
+            logger.warning(f"{content_type} length {word_count} words outside target {min_words}–{max_words} for {language} on {platform}: {content}")
+        result = {'content': content, 'tone': tone, 'sentiment': sentiment, 'language': language}
+        logger.debug(f"Generated content: {result}")
+        # Add delay to avoid rate limits
+        await asyncio.sleep(3)
+        return result
     except Exception as e:
-        logger.error(f"Failed to generate {content_type} (tone: {tone}, sentiment: {sentiment}, lang: {language}): {str(e)}")
-        return {'content': text, 'tone': tone, 'sentiment': sentiment, 'language': language}
+        logger.error(f"Failed to generate {content_type} (tone: {tone}, sentiment: {sentiment}, lang: {language}, platform: {platform}): {str(e)}")
+        content = text if content_type == 'post' else get_sanskrit_fallback(text, content_type, platform) if language == 'sa' else text
+        content = truncate_to_word_limit(content, language, max_words)
+        content = pad_to_word_limit(content, language, min_words, content_type, platform)
+        result = {'content': content, 'tone': tone, 'sentiment': sentiment, 'language': language}
+        logger.debug(f"Fallback content: {result}")
+        # Add delay even in fallback to avoid rapid retries
+        await asyncio.sleep(3)
+        return result
 
-async def generate_tts(result: Dict, output_path: str, language: str, voice: str = 'normal') -> bool:
-    """Generate TTS audio using gTTS (Task 2: Agent G)."""
-    try:
-        lang_map = {'en': 'en', 'hi': 'hi', 'sa': 'hi'}  # Sanskrit uses Hindi as fallback for TTS
-        tts_lang = lang_map.get(language, 'en')
-        slow = voice == 'slow'
-        
-        text = clean_text_for_tts(result.get('voice_script', ''))
-        if not text:
-            logger.warning(f"Empty or invalid voice script for ID {result.get('id', 'unknown')}, skipping TTS")
-            return False
-        
-        tts = gTTS(text=text, lang=tts_lang, slow=slow)
-        await asyncio.to_thread(tts.save, output_path)
-        logger.info(f"Generated TTS for ID {result.get('id', 'unknown')} at {output_path} (voice: {voice})")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to generate TTS for ID {result.get('id', 'unknown')}: {str(e)}")
-        return False
-
-async def process_content_blocks(blocks: List[Dict], output_dir: str, language: str, client: AsyncGroq = None) -> None:
-    """Process content blocks for tweets, posts, and voice (Task 2: Agent G)."""
+# Replace the process_content_blocks function in ai_writer_voicegen.py with this version
+async def process_content_blocks(blocks: List[Dict], output_dir: str, language: str, content_id: str, platforms: List[str], client: AsyncGroq = None) -> List[Dict]:
+    """Process content blocks for multiple platforms."""
+    tts_simulations = []  # Keep for compatibility but won't save
     for block in blocks:
-        block_id = block.get('id', 'unknown')
-        text = block.get('text', '')
-        sentiment = block.get('sentiment', 'neutral')
-        try:
-            # Generate tweet
-            tweet_data = await generate_content(text, 'tweet', 'formal', language, sentiment, client)
-            tweet_content = tweet_data['content']
-            tweet_path = os.path.join(output_dir, f"tweet_{block_id}_twitter_{uuid.uuid4().hex}.json")
-            os.makedirs(os.path.dirname(tweet_path), exist_ok=True)
-            with open(tweet_path, 'w', encoding='utf-8') as f:
-                json.dump({'id': block_id, 'tweet': tweet_content, 'platform': 'twitter', 'content_type': 'tweet', 'tone': 'formal', 'sentiment': sentiment, 'version': 1}, f, ensure_ascii=False)
-            logger.info(f"Generated twitter tweet for ID {block_id} at {tweet_path}")
-
-            # Generate Instagram post
-            post_data_ig = await generate_content(text, 'post', 'casual', language, sentiment, client)
-            post_path_ig = os.path.join(output_dir, f"post_{block_id}_instagram_{uuid.uuid4().hex}.json")
-            with open(post_path_ig, 'w', encoding='utf-8') as f:
-                json.dump({'id': block_id, 'post': post_data_ig['content'], 'platform': 'instagram', 'content_type': 'post', 'tone': 'casual', 'sentiment': sentiment, 'version': 1}, f, ensure_ascii=False)
-            logger.info(f"Generated instagram post for ID {block_id} at {post_path_ig}")
-
-            # Generate LinkedIn post
-            post_data_li = await generate_content(text, 'post', 'formal', language, sentiment, client)
-            post_path_li = os.path.join(output_dir, f"post_{block_id}_linkedin_{uuid.uuid4().hex}.json")
-            with open(post_path_li, 'w', encoding='utf-8') as f:
-                json.dump({'id': block_id, 'post': post_data_li['content'], 'platform': 'linkedin', 'content_type': 'post', 'tone': 'formal', 'sentiment': sentiment, 'version': 1}, f, ensure_ascii=False)
-            logger.info(f"Generated linkedin post for ID {block_id} at {post_path_li}")
-
-            # Generate voice script
-            voice_data = await generate_content(text, 'voice_script', 'devotional', language, sentiment, client)
-            voice_path = os.path.join(output_dir, f"voice_{block_id}_sanatan_{uuid.uuid4().hex}.json")
-            os.makedirs(os.path.dirname(voice_path), exist_ok=True)
-            result = {'id': block_id, 'voice_script': voice_data['content'], 'platform': 'sanatan', 'content_type': 'voice_script', 'tone': 'devotional', 'sentiment': sentiment, 'version': 1}
-            with open(voice_path, 'w', encoding='utf-8') as f:
-                json.dump(result, f, ensure_ascii=False)
-            logger.info(f"Generated sanatan voice script for ID {block_id} at {voice_path}")
-
-            # Generate TTS for voice script
-            tts_path = os.path.join(output_dir, f"voice_{block_id}_sanatan_{uuid.uuid4().hex}.mp3")
-            voice_style = 'slow' if language == 'sa' else 'normal'
-            if await generate_tts(result, tts_path, language, voice=voice_style):
-                logger.info(f"Processed block {block_id} with TTS for sanatan ({language})")
-            else:
-                logger.info(f"Processed block {block_id} without TTS for sanatan ({language})")
-        except Exception as e:
-            logger.error(f"Failed to process block {block_id}: {str(e)}")
+        block_id = block.get('content_id', 'unknown')
+        text = block.get('sentiment_tuned_text', block.get('personalized_text', ''))
+        sentiment = block.get('sentiment', 'uplifting')
+        voice_tag = block.get('voice_tag', f"{language}_female_casual_1")
+        
+        if not text:
+            logger.warning(f"Missing sentiment_tuned_text or personalized_text for ID {block_id}, skipping")
             continue
+        if not voice_tag:
+            logger.warning(f"Missing voice_tag for ID {block_id}, using default: {voice_tag}")
+        
+        for platform in platforms:
+            try:
+                if platform in ['instagram', 'twitter', 'linkedin']:
+                    tone = 'professional' if platform == 'linkedin' else 'casual'
+                    post_data = await generate_content(text, 'post', tone, language, sentiment, platform, client)
+                    if not isinstance(post_data, dict):
+                        logger.error(f"Invalid post_data type for {platform}: {type(post_data)}, expected dict")
+                        continue
+                    post_path = os.path.join(output_dir, f"post_{block_id}_{platform}_{uuid.uuid4().hex}.json")
+                    os.makedirs(os.path.dirname(post_path), exist_ok=True)
+                    if not os.access(os.path.dirname(post_path), os.W_OK):
+                        raise PermissionError(f"No write permission for {os.path.dirname(post_path)}")
+                    post_entry = {
+                        'content_id': block_id,
+                        'post': post_data['content'],
+                        'platform': platform,
+                        'content_type': 'post',
+                        'tone': tone,
+                        'sentiment': sentiment,
+                        'language': language,
+                        'voice_tag': voice_tag,
+                        'version': 1,
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }
+                    with open(post_path, 'w', encoding='utf-8') as f:
+                        json.dump(post_entry, f, ensure_ascii=False, indent=2)
+                    logger.info(f"Generated {platform} post for ID {block_id} at {post_path}")
+                
+                elif platform == 'sanatan':
+                    voice_data = await generate_content(text, 'voice_script', 'devotional', language, sentiment, platform, client)
+                    if not isinstance(voice_data, dict):
+                        logger.error(f"Invalid voice_data type for {platform}: {type(voice_data)}, expected dict")
+                        content = voice_data if isinstance(voice_data, str) else text
+                    else:
+                        content = voice_data['content']
+                    voice_path = os.path.join(output_dir, f"voice_{block_id}_sanatan_{uuid.uuid4().hex}.json")
+                    os.makedirs(os.path.dirname(voice_path), exist_ok=True)
+                    if not os.access(os.path.dirname(voice_path), os.W_OK):
+                        raise PermissionError(f"No write permission for {os.path.dirname(voice_path)}")
+                    voice_entry = {
+                        'content_id': block_id,
+                        'voice_script': content,
+                        'platform': 'sanatan',
+                        'content_type': 'voice_script',
+                        'tone': 'devotional',
+                        'sentiment': sentiment,
+                        'language': language,
+                        'voice_tag': voice_tag,
+                        'version': 1,
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }
+                    with open(voice_path, 'w', encoding='utf-8') as f:
+                        json.dump(voice_entry, f, ensure_ascii=False, indent=2)
+                    logger.info(f"Generated Sanatan voice script for ID {block_id} at {voice_path}")
 
-def load_blocks(input_dir: str, language: str) -> List[Dict]:
-    """Load blocks from language-specific folders (Task 2: Agent G)."""
+                    # Simulate TTS (log only, don't save)
+                    tts_path = os.path.abspath(os.path.join(output_dir, f"voice_{block_id}_sanatan_{uuid.uuid4().hex}.mp3"))
+                    tts_simulation = {
+                        'content_id': block_id,
+                        'language': language,
+                        'tone': 'devotional',
+                        'voice_tag': voice_tag,
+                        'dummy_audio_path': tts_path,
+                        'voice_script': content,
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }
+                    tts_simulations.append(tts_simulation)
+                    logger.info(f"Simulated TTS for ID {block_id} at {tts_path} (voice: {voice_tag})")
+            
+            except Exception as e:
+                logger.error(f"Failed to process block {block_id} for {platform} (text: {text[:50]}...): {str(e)}")
+                continue
+    
+    # Do not save tts_simulations to avoid redundancy
+    return tts_simulations
+
+def validate_block(block: Dict, language: str) -> bool:
+    """Validate block schema."""
+    required_fields = ['content_id', 'sentiment_tuned_text', 'voice_tag', 'sentiment']
+    for field in required_fields:
+        if field not in block:
+            logger.warning(f"Missing field '{field}' in block for language {language}")
+            return False
+    return True
+
+def load_blocks(input_dir: str, language: str, content_id: str) -> List[Dict]:
+    """Load personalized content from content_ready."""
     blocks = []
-    lang_dir = os.path.join(input_dir, language)
-    if not os.path.exists(lang_dir):
-        logger.warning(f"Input directory not found for language {language}: {lang_dir}")
-        return blocks
-    for block_file in glob.glob(os.path.join(lang_dir, 'block_*.json')):
+    pattern = os.path.join(input_dir, '*', language, f'personalized_{content_id}_*.json')
+    for block_file in glob.glob(pattern, recursive=True):
         try:
             with open(block_file, 'r', encoding='utf-8') as f:
                 block = json.load(f)
-                blocks.append(block)
+                if validate_block(block, language):
+                    blocks.append(block)
+                else:
+                    logger.warning(f"Invalid block schema in {block_file}, skipping")
             logger.info(f"Loaded block from {block_file}")
         except Exception as e:
             logger.error(f"Failed to load {block_file}: {str(e)}")
     return blocks
 
-def clear_output_directory(output_dir: str) -> None:
-    """Clear the output directory before processing new content."""
-    if os.path.exists(output_dir):
-        try:
-            shutil.rmtree(output_dir)
-            logger.info(f"Cleared output directory: {output_dir}")
-        except Exception as e:
-            logger.error(f"Failed to clear output directory {output_dir}: {str(e)}")
-            raise
-    os.makedirs(output_dir, exist_ok=True)
+def clear_old_data(output_base_dir: str, language: str, content_id: str, platforms: List[str]) -> None:
+    """Remove old output files for the given content_id, language, and platforms."""
+    output_dir = os.path.join(output_base_dir, language)
+    if not os.path.exists(output_dir):
+        return
+    patterns = []
+    for platform in platforms:
+        if platform in ['instagram', 'twitter', 'linkedin']:
+            patterns.append(f"post_{content_id}_{platform}_*.json")
+        elif platform == 'sanatan':
+            patterns.extend([f"voice_{content_id}_*.json", f"tts_simulation_output_{content_id}.json"])
+    for pattern in patterns:
+        for file in glob.glob(os.path.join(output_dir, pattern)):
+            try:
+                os.remove(file)
+                logger.info(f"Removed old file: {file}")
+            except Exception as e:
+                logger.error(f"Failed to remove old file {file}: {str(e)}")
 
-async def run_ai_writer_voicegen_async(selected_language: str, sentiment: str) -> None:
-    """Run Agent G: Adaptive AI Writer & Voice Generator (Task 2) with proper client handling."""
-    logger.info(f"Starting Agent G: Adaptive AI Writer & Voice Generator for language: {selected_language}")
+def validate_platforms(platforms: List[str]) -> List[str]:
+    """Validate and return supported platforms."""
+    valid_platforms = [platform for platform in platforms if platform in SUPPORTED_PLATFORMS]
+    invalid_platforms = set(platforms) - set(valid_platforms)
+    if invalid_platforms:
+        logger.warning(f"Invalid platforms ignored: {', '.join(invalid_platforms)}. Supported platforms: {', '.join(SUPPORTED_PLATFORMS)}")
+    return valid_platforms
+
+def validate_languages(languages: List[str]) -> List[str]:
+    """Validate and return supported languages."""
+    valid_languages = [lang for lang in languages if lang in SUPPORTED_LANGUAGES]
+    invalid_languages = set(languages) - set(valid_languages)
+    if invalid_languages:
+        logger.warning(f"Unsupported languages ignored: {', '.join(invalid_languages)}. Supported languages: {', '.join(SUPPORTED_LANGUAGES)}")
+    return valid_languages
+
+async def process_language(lang: str, input_base_dir: str, output_base_dir: str, content_id: str, platforms: List[str], client: AsyncGroq = None) -> None:
+    """Process a single language for multiple platforms."""
+    clear_old_data(output_base_dir, lang, content_id, platforms)
+    blocks = load_blocks(input_base_dir, lang, content_id)
+    if blocks:
+        output_dir = os.path.join(output_base_dir, lang)
+        os.makedirs(output_dir, exist_ok=True)
+        await process_content_blocks(blocks, output_dir, lang, content_id, platforms, client)
+    else:
+        logger.warning(f"No blocks found for language {lang} and content_id {content_id}")
+
+async def run_ai_writer_voicegen_async(content_id: str, platforms: List[str], user_id: str, sentiment: str, languages: List[str]) -> None:
+    """Run Agent G: Adaptive AI Writer & Voice Generator for multiple platforms."""
+    valid_platforms = validate_platforms(platforms)
+    valid_languages = validate_languages(languages)
+    
+    if not valid_platforms:
+        logger.error("No valid platforms provided. Exiting.")
+        return
+    if not valid_languages:
+        logger.error("No valid languages provided. Exiting.")
+        return
+    
+    logger.info(f"Starting Agent G for content_id: {content_id}, platforms: {valid_platforms}, user_id: {user_id}, sentiment: {sentiment}, languages: {valid_languages}")
     client = None
     try:
         if os.getenv('GROQ_API_KEY'):
             client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
         else:
-            logger.warning("GROQ_API_KEY not set, running in fallback mode without API calls")
+            logger.warning("GROQ_API_KEY not set, running in fallback mode")
         
-        input_dir = os.path.join(script_dir, '..', 'content', 'multilingual_ready')
-        output_base_dir = os.path.join(script_dir, '..', 'content', 'content_ready')
+        input_base_dir = os.path.join(script_dir, '..', 'content', 'content_ready')
+        output_base_dir = os.path.join(script_dir, '..', 'content', 'content_final')
         
-        # Clear the output directory to remove stale content
-        clear_output_directory(output_base_dir)
-        
-        # Determine which languages to process
-        languages_to_process = ['en', 'hi', 'sa'] if selected_language == 'all' else [selected_language]
-        
-        for lang in languages_to_process:
-            blocks = load_blocks(input_dir, lang)
-            if blocks:
-                output_dir = os.path.join(output_base_dir, lang)
-                await process_content_blocks(blocks, output_dir, lang, client)
-            else:
-                logger.warning(f"No blocks found for language {lang}")
+        tasks = [process_language(lang, input_base_dir, output_base_dir, content_id, valid_platforms, client) for lang in valid_languages]
+        await asyncio.gather(*tasks)
     except Exception as e:
         logger.error(f"Script execution failed: {str(e)}")
         raise
@@ -433,16 +506,21 @@ async def run_ai_writer_voicegen_async(selected_language: str, sentiment: str) -
             await client.close()
             logger.info("Groq API client closed successfully")
     
-    logger.info("Completed AI writing and voice generation")
+    logger.info(f"Completed AI writing and voice generation for content_id {content_id}")
 
 def run_ai_writer_voicegen() -> None:
-    """Wrapper to run the async function with language and sentiment arguments."""
+    """Wrapper to run the async function with CLI arguments."""
     parser = argparse.ArgumentParser(description="Run Agent G: AI Writer & Voice Generator")
-    parser.add_argument('--sentiment', choices=['uplifting', 'neutral', 'devotional'], default='neutral', help="Sentiment to apply (uplifting, neutral, devotional)")
-    parser.add_argument('language', choices=['en', 'hi', 'sa', 'all'], help="Language to process (en, hi, sa, all)")
+    parser.add_argument('--content_id', required=True, help='Content ID to process')
+    parser.add_argument('--platforms', required=True, help='Comma-separated list of platforms (e.g., instagram,twitter,linkedin,sanatan)')
+    parser.add_argument('--user_id', required=True, help='User ID for personalization')
+    parser.add_argument('--sentiment', choices=['uplifting', 'neutral', 'devotional'], default='neutral', help='Sentiment to apply')
+    parser.add_argument('--languages', help='Comma-separated list of languages (e.g., en,hi,sa)', default='en,hi,sa')
     args = parser.parse_args()
     
-    asyncio.run(run_ai_writer_voicegen_async(args.language, args.sentiment))
+    platforms = args.platforms.split(',')
+    languages = args.languages.split(',')
+    asyncio.run(run_ai_writer_voicegen_async(args.content_id, platforms, args.user_id, args.sentiment, languages))
 
 if __name__ == "__main__":
     run_ai_writer_voicegen()

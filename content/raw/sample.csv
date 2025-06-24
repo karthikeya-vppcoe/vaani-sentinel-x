@@ -1,13 +1,21 @@
 id,text,type,language
-1,The sky is blue,fact,en
-2,Exciting news about tech!,micro-article,en
-3,Support this cause,quote,en
-4,This is damn offensive!,fact,en
-5,Support this political party!,quote,en
-6,आकाश नीला है,fact,hi
-7,प्रौद्योगिकी के बारे में रोमांचक समाचार!,micro-article,hi
-8,इस कारण का समर्थन करें,quote,hi
-9,ॐ नमः शिवाय,quote,sa
-10,विद्या विनयं ददाति,fact,sa
-11,ॐ शत्रून् नाशति,quote,sa  
-12,हर हर महादेव,quote,  
+1,The sun rises in the east,fact,en
+2,Le soleil se lève à l'est,fact,fr
+3,El sol sale por el este,fact,es
+4,Die Sonne geht im Osten auf,fact,de
+5,O sol nasce no leste,fact,pt
+6,Солнце встает на востоке,fact,ru
+7,الشمس تشرق من الشرق,fact,ar
+8,日は東から昇る,fact,ja
+9,해는 동쪽에서 뜬다,fact,ko
+10,The sun rises in the east,fact,it
+11,सूर्य पूर्व में उदय होता है,fact,hi
+12,सूर्य पूर्वेला उगवतो,fact,mr
+13,आकाशः नीलः अस्ति,fact,sa
+14,सूर्य पूर्व में उदाउँछ,fact,ne
+15,సూర్యుడు తూర్పున ఉదయిస్తాడు,fact,te
+16,சூரியன் கிழக்கே உதயமாகிறான்,fact,ta
+17,സൂര്യൻ കിഴക്കിൽ ഉദയം ചെയ്യുന്നു,fact,ml
+18,ಸೂರ್ಯನು ಪೂರ್ವ ದಿಕ್ಕಿನಲ್ಲಿ ಉದಯಿಸುತ್ತಾನೆ,fact,kn
+19,太阳从东方升起,fact,zh
+20,سورج مشرق سے طلوع ہوتا ہے,fact,ur

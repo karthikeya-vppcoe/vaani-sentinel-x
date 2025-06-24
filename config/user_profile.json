@@ -1,0 +1,34 @@
+{
+  "profiles": [
+    {
+      "user_id": "default",
+      "preferred_languages": ["en", "hi", "sa", "mr", "ta", "te", "kn", "ml", "bn", "gu", "pa", "es", "fr", "de", "zh", "ja", "ru", "ar", "pt", "it"],
+      "preferred_tone": {
+        "twitter": "neutral",
+        "instagram": "casual",
+        "linkedin": "formal",
+        "sanatan": "devotional"
+      }
+    },
+    {
+      "user_id": "user2",
+      "preferred_languages": ["en", "hi", "ta"],
+      "preferred_tone": {
+        "twitter": "formal",
+        "instagram": "neutral",
+        "linkedin": "formal",
+        "sanatan": "neutral"
+      }
+    },
+    {
+      "user_id": "user3",
+      "preferred_languages": ["sa", "mr", "es"],
+      "preferred_tone": {
+        "twitter": "devotional",
+        "instagram": "devotional",
+        "linkedin": "formal",
+        "sanatan": "devotional"
+      }
+    }
+  ]
+}

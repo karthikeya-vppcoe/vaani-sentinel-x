@@ -1,0 +1,22 @@
+{
+  "content_id": "81c13384-793d-450b-96b1-f29415eea9c5",
+  "platform": "instagram",
+  "language": "sa",
+  "user_id": "default",
+  "translated_text": "सूर्यः पूर्वदिशात् उदेति। (Sūryah pūrvadiśāt udeti.)",
+  "personalized_text": "अरे! सूरज तो पूरब से ही निकलता है।",
+  "tone": "casual",
+  "voice_tag": "sanskrit_female_casual_1",
+  "confidence_score": 0.95,
+  "source_language": "zh",
+  "sentiment": "uplifting",
+  "preferred_tone": "casual",
+  "pipeline": "cjk_pipeline",
+  "timestamp": "2025-06-24T09:59:40.668334+00:00",
+  "sentiment_tuned_text": "अरे! सूरज तो पूरब से ही निकलता है। (आनन्ददायकं प्रेरणात्मकं च)",
+  "text_history": {
+    "translated": "सूर्यः पूर्वदिशात् उदेति। (Sūryah pūrvadiśāt udeti.)",
+    "personalized": "अरे! सूरज तो पूरब से ही निकलता है।",
+    "sentiment_tuned": "अरे! सूरज तो पूरब से ही निकलता है। (आनन्ददायकं प्रेरणात्मकं च)"
+  }
+}

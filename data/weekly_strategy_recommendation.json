@@ -1,0 +1,22 @@
+[
+  {
+    "type": "high-performing",
+    "platform": "instagram",
+    "language": "en",
+    "tone": "uplifting",
+    "content_type": "post",
+    "content_id": "81c13384-793d-450b-96b1-f29415eea9c5",
+    "score": 233.4,
+    "message": "Increase uplifting en post content on instagram for better engagement."
+  },
+  {
+    "type": "underperforming",
+    "platform": "instagram",
+    "language": "en",
+    "tone": "uplifting",
+    "content_type": "post",
+    "content_id": "81c13384-793d-450b-96b1-f29415eea9c5",
+    "score": 233.4,
+    "message": "Reduce uplifting en post content on instagram due to low engagement."
+  }
+]

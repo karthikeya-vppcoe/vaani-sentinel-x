@@ -1,7 +1,8 @@
 {
-  "languages": {
+  "default_voices_by_language": {
     "en": "english_female_1",
     "hi": "hindi_female_1",
+    "sa": "sanskrit_female_1",
     "mr": "marathi_female_1",
     "ta": "tamil_female_1",
     "te": "telugu_male_1",
@@ -10,16 +11,138 @@
     "bn": "bengali_female_1",
     "gu": "gujarati_male_1",
     "pa": "punjabi_female_1",
-    "as": "assamese_male_1",
     "es": "spanish_female_1",
     "fr": "french_male_1",
     "de": "german_male_2",
-    "ja": "japanese_female_1",
     "zh": "chinese_female_1",
+    "ja": "japanese_female_1",
     "ru": "russian_male_1",
     "ar": "arabic_female_1",
     "pt": "portuguese_male_1",
     "it": "italian_female_1"
   },
-  "fallback_voice": "english_female_1"
+  "tone_voice_mapping": {
+    "en": {
+      "neutral": "english_female_1",
+      "formal": "english_female_formal_1",
+      "devotional": "english_female_devotional_1",
+      "casual": "english_female_casual_1"
+    },
+    "hi": {
+      "neutral": "hindi_female_1",
+      "formal": "hindi_female_formal_1",
+      "devotional": "hindi_female_devotional_1",
+      "casual": "hindi_female_casual_1"
+    },
+    "sa": {
+      "neutral": "sanskrit_female_1",
+      "formal": "sanskrit_female_formal_1",
+      "devotional": "sanskrit_female_devotional_1",
+      "casual": "sanskrit_female_casual_1"
+    },
+    "mr": {
+      "neutral": "marathi_female_1",
+      "formal": "marathi_female_formal_1",
+      "devotional": "marathi_female_devotional_1",
+      "casual": "marathi_female_casual_1"
+    },
+    "ta": {
+      "neutral": "tamil_female_1",
+      "formal": "tamil_female_formal_1",
+      "devotional": "tamil_female_devotional_1",
+      "casual": "tamil_female_casual_1"
+    },
+    "te": {
+      "neutral": "telugu_male_1",
+      "formal": "telugu_male_formal_1",
+      "devotional": "telugu_male_devotional_1",
+      "casual": "telugu_male_casual_1"
+    },
+    "kn": {
+      "neutral": "kannada_female_1",
+      "formal": "kannada_female_formal_1",
+      "devotional": "kannada_female_devotional_1",
+      "casual": "kannada_female_casual_1"
+    },
+    "ml": {
+      "neutral": "malayalam_male_1",
+      "formal": "malayalam_male_formal_1",
+      "devotional": "malayalam_male_devotional_1",
+      "casual": "malayalam_male_casual_1"
+    },
+    "bn": {
+      "neutral": "bengali_female_1",
+      "formal": "bengali_female_formal_1",
+      "devotional": "bengali_female_devotional_1",
+      "casual": "bengali_female_casual_1"
+    },
+    "gu": {
+      "neutral": "gujarati_male_1",
+      "formal": "gujarati_male_formal_1",
+      "devotional": "gujarati_male_devotional_1",
+      "casual": "gujarati_male_casual_1"
+    },
+    "pa": {
+      "neutral": "punjabi_female_1",
+      "formal": "punjabi_female_formal_1",
+      "devotional": "punjabi_female_devotional_1",
+      "casual": "punjabi_female_casual_1"
+    },
+    "es": {
+      "neutral": "spanish_female_1",
+      "formal": "spanish_female_formal_1",
+      "devotional": "spanish_female_devotional_1",
+      "casual": "spanish_female_casual_1"
+    },
+    "fr": {
+      "neutral": "french_male_1",
+      "formal": "french_male_formal_1",
+      "devotional": "french_male_devotional_1",
+      "casual": "french_male_casual_1"
+    },
+    "de": {
+      "neutral": "german_male_2",
+      "formal": "german_male_formal_2",
+      "devotional": "german_male_devotional_2",
+      "casual": "german_male_casual_2"
+    },
+    "zh": {
+      "neutral": "chinese_female_1",
+      "formal": "chinese_female_formal_1",
+      "devotional": "chinese_female_devotional_1",
+      "casual": "chinese_female_casual_1"
+    },
+    "ja": {
+      "neutral": "japanese_female_1",
+      "formal": "japanese_female_formal_1",
+      "devotional": "japanese_female_devotional_1",
+      "casual": "japanese_female_casual_1"
+    },
+    "ru": {
+      "neutral": "russian_male_1",
+      "formal": "russian_male_formal_1",
+      "devotional": "russian_male_devotional_1",
+      "casual": "russian_male_casual_1"
+    },
+    "ar": {
+      "neutral": "arabic_female_1",
+      "formal": "arabic_female_formal_1",
+      "devotional": "arabic_female_devotional_1",
+      "casual": "arabic_female_casual_1"
+    },
+    "pt": {
+      "neutral": "portuguese_male_1",
+      "formal": "portuguese_male_formal_1",
+      "devotional": "portuguese_male_devotional_1",
+      "casual": "portuguese_male_casual_1"
+    },
+    "it": {
+      "neutral": "italian_female_1",
+      "formal": "italian_female_formal_1",
+      "devotional": "italian_female_devotional_1",
+      "casual": "italian_female_casual_1"
+    }
+  },
+  "fallback_voice_for_language": "english_female_1",
+  "fallback_voice_for_tone": "neutral"
 }

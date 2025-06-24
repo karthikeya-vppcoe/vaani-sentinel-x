@@ -24,13 +24,13 @@ file_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
-logger.handlers = [file_handler]
+logger.handlers = [file_handler, logging.StreamHandler()]
 logger.info("Initializing publisher_sim.py")
 
 # Constants
-CONTENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'content_ready'))
-METADATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'structured', 'metadata'))
-PREVIEW_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'translation_previews'))
+CONTENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'content', 'content_final'))
+TRANSLATED_CONTENT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'translated_content.json'))
+TTS_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'tts_simulation_output.json'))
 SCHEDULED_POSTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduled_posts'))
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduler_db', 'scheduled_posts.db'))
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key')
@@ -39,14 +39,14 @@ def load_json(file_path: str) -> Dict:
     """Load JSON file."""
     logger.debug(f"Loading JSON: {file_path}")
     if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
-        raise FileNotFoundError(f"File not found: {file_path}")
+        logger.warning(f"File not found: {file_path}")
+        return {}
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
         logger.error(f"Failed to load {file_path}: {str(e)}")
-        raise
+        return {}
 
 def get_content_file(content_id: str, content_type: str, lang: str, platform: str) -> str:
     """Find the content file with precise pattern matching."""
@@ -63,8 +63,14 @@ def get_content_file(content_id: str, content_type: str, lang: str, platform: st
         logger.warning(f"Content directory {lang_dir} not found")
     return ''
 
-def get_audio_file(content_id: str, lang: str, platform: str) -> str:
-    """Find the audio file for a given content ID, language, and platform."""
+def get_audio_file(content_id: str, lang: str, platform: str, tts_data: List[Dict]) -> str:
+    """Find the audio file or dummy_audio_path for a given content ID, language, and platform."""
+    for item in tts_data:
+        if item.get('content_id') == content_id and item.get('language') == lang and item.get('platform') == platform:
+            audio_path = item.get('dummy_audio_path', '')
+            if audio_path:
+                logger.info(f"Found dummy_audio_path in TTS data: {audio_path}")
+                return audio_path
     lang_dir = os.path.join(CONTENT_DIR, lang)
     try:
         for filename in os.listdir(lang_dir):
@@ -76,6 +82,36 @@ def get_audio_file(content_id: str, lang: str, platform: str) -> str:
     except FileNotFoundError:
         logger.warning(f"Content directory {lang_dir} not found")
     return ''
+
+def load_translated_content(content_id: str, lang: str) -> Dict:
+    """Load translated content for a given content ID and language."""
+    try:
+        translated_data = load_json(TRANSLATED_CONTENT)
+        if not translated_data:
+            logger.warning(f"No translated content available, falling back to original content for content_id={content_id}, lang={lang}")
+            return {}
+        for item in translated_data:
+            if item.get('content_id') == content_id and item.get('language') == lang:
+                logger.info(f"Found translated content for content_id={content_id}, lang={lang}")
+                return item
+        logger.warning(f"No translated content found for content_id={content_id}, lang={lang}")
+        return {}
+    except Exception as e:
+        logger.warning(f"Failed to load translated content: {str(e)}, falling back to original content")
+        return {}
+
+def load_tts_content() -> List[Dict]:
+    """Load TTS content from tts_simulation_output.json."""
+    try:
+        tts_data = load_json(TTS_FILE)
+        if not isinstance(tts_data, list):
+            logger.error(f"Invalid format in {TTS_FILE}: expected list, got {type(tts_data)}")
+            return []
+        logger.info(f"Loaded {len(tts_data)} items from {TTS_FILE}")
+        return tts_data
+    except Exception as e:
+        logger.warning(f"Failed to load TTS content from {TTS_FILE}: {str(e)}")
+        return []
 
 def generate_jwt_token() -> str:
     """Generate a JWT token for authentication."""
@@ -92,24 +128,25 @@ def generate_jwt_token() -> str:
         logger.error(f"Failed to generate JWT token: {str(e)}")
         raise
 
-def format_content(content: Dict, content_type: str, platform: str, audio_file: str, lang: str, preview: Dict = None) -> Dict:
-    """Format content for platform-specific posting, using translation preview if provided."""
+def format_content(content: Dict, content_type: str, platform: str, audio_file: str, lang: str, translation: Dict = None, tts_item: Dict = None) -> Dict:
+    """Format content for platform-specific posting, using translation and TTS data."""
     content_id = content.get('content_id', content.get('id', 'unknown'))
-    # Use translated text from preview if available, else fall back to original
-    content_text = preview.get('translated_text', content.get(content_type if content_type != 'voice' else 'voice_script', '')) if preview else content.get(content_type if content_type != 'voice' else 'voice_script', '')
-    sentiment = preview.get('sentiment', content.get('sentiment', 'neutral')) if preview else content.get('sentiment', 'neutral')
-    voice_tag = preview.get('voice_tag', '') if preview else ''
-    preferred_languages = content.get('preferred_languages', []) if preview else []
+    content_text = translation.get('translated_text', content.get(content_type if content_type != 'voice_script' else 'voice_script', '')) if translation else content.get(content_type if content_type != 'voice_script' else 'voice_script', '')
+    tone = translation.get('sentiment', content.get('sentiment', 'neutral')) if translation else content.get('sentiment', 'neutral')
+    voice_tag = tts_item.get('voice_tag', '') if tts_item else content.get('voice_tag', '')
+    dummy_audio_path = tts_item.get('dummy_audio_path', audio_file) if tts_item else audio_file
+    preferred_languages = translation.get('preferred_languages', content.get('preferred_languages', [])) if translation else content.get('preferred_languages', [])
 
-    logger.info(f"Formatting content ID {content_id}, platform: {platform}, lang: {lang}, sentiment: {sentiment}")
+    logger.info(f"Formatting content ID {content_id}, platform: {platform}, lang: {lang}, tone: {tone}, voice_tag: {voice_tag}")
 
     post_data = {
         'post_id': str(uuid.uuid4()),
         'content_id': content_id,
         'platform': platform,
         'language': lang,
-        'sentiment': sentiment,
+        'tone': tone,
         'voice_tag': voice_tag,
+        'dummy_audio_path': dummy_audio_path,
         'preferred_languages': preferred_languages,
         'publish_time': datetime.now().isoformat(),
         'status': 'pending'
@@ -117,30 +154,30 @@ def format_content(content: Dict, content_type: str, platform: str, audio_file: 
 
     if platform == 'instagram':
         post_data['content'] = f"{content_text}\n#Inspiration #Multilingual"
-        post_data['audio_thumbnail'] = audio_file if content_type == 'voice' else ''
+        post_data['audio_thumbnail'] = dummy_audio_path if content_type == 'voice_script' else ''
         post_data['format'] = 'multilingual text + audio thumbnail'
     elif platform == 'twitter':
         post_data['content'] = content_text[:280] if content_type == 'tweet' else content_text
-        post_data['audio_snippet'] = audio_file if content_type == 'voice' else ''
+        post_data['audio_snippet'] = dummy_audio_path if content_type == 'voice_script' else ''
         post_data['format'] = 'multilingual short text + TTS snippet'
     elif platform == 'linkedin':
         post_data['content'] = {
             'title': f"Multilingual Insight {content_id}",
             'summary': content_text
         }
-        post_data['audio'] = audio_file if content_type == 'voice' else ''
+        post_data['audio'] = dummy_audio_path if content_type == 'voice_script' else ''
         post_data['format'] = 'multilingual title + summary + TTS'
     elif platform == 'sanatan':
         post_data['content'] = content_text
-        post_data['audio'] = audio_file if content_type == 'voice' else ''
+        post_data['audio'] = dummy_audio_path if content_type == 'voice_script' else ''
         post_data['format'] = 'multilingual voice script + audio'
 
     return post_data
 
-def publish_to_platform(platform: str, content: Dict, content_type: str, audio_file: str, token: str, preview_mode: bool, lang: str, preview: Dict = None) -> bool:
-    """Simulate publishing content to a platform, using translation preview if provided."""
+def publish_to_platform(platform: str, content: Dict, content_type: str, audio_file: str, token: str, preview_mode: bool, lang: str, translation: Dict = None, tts_item: Dict = None) -> bool:
+    """Simulate publishing content to a platform, using translation and TTS data."""
     try:
-        post_data = format_content(content, content_type, platform, audio_file, lang, preview)
+        post_data = format_content(content, content_type, platform, audio_file, lang, translation, tts_item)
         content_id = content.get('content_id', content.get('id', 'unknown'))
         content_text = post_data['content'] if isinstance(post_data['content'], str) else json.dumps(post_data['content'])
 
@@ -203,11 +240,12 @@ def fetch_due_posts(selected_language: str) -> List[Tuple[str, str, str, str]]:
         c.execute(query, params)
         due_posts = c.fetchall()
         conn.close()
+        logger.info(f"Fetched {len(due_posts)} due posts for language {selected_language}: {due_posts}")
     except Exception as e:
         logger.error(f"Failed to fetch due posts: {str(e)}")
     return due_posts
 
-def publish_content(content_id: str, platform: str, content_type: str, token: str, lang: str, preview_mode: bool) -> bool:
+def publish_content(content_id: str, platform: str, content_type: str, token: str, lang: str, preview_mode: bool, tts_data: List[Dict]) -> bool:
     """Publish content to the specified platform."""
     content_file = get_content_file(content_id, content_type, lang, platform)
     if not content_file:
@@ -215,14 +253,17 @@ def publish_content(content_id: str, platform: str, content_type: str, token: st
         update_status(content_id, platform, lang, 'failed')
         return False
     try:
-        with open(content_file, 'r', encoding='utf-8') as f:
-            content = json.load(f)
-        audio_file = get_audio_file(content_id, lang, platform) if content_type == 'voice' else ''
-        if content_type == 'voice' and platform == 'sanatan' and not audio_file:
-            logger.error(f"No audio file found for voice content ID {content_id} on {platform} (lang: {lang})")
+        content = load_json(content_file)
+        translation = load_translated_content(content_id, lang)
+        tts_item = next((item for item in tts_data if item.get('content_id') == content_id and item.get('language') == lang and item.get('platform') == platform), None)
+        
+        audio_file = get_audio_file(content_id, lang, platform, tts_data) if content_type == 'voice_script' else ''
+        if content_type == 'voice_script' and platform == 'sanatan' and not audio_file:
+            logger.error(f"No audio file found for voice_script content ID {content_id} on {platform} (lang: {lang})")
             update_status(content_id, platform, lang, 'failed')
             return False
-        if publish_to_platform(platform, content, content_type, audio_file, token, preview_mode, lang):
+        
+        if publish_to_platform(platform, content, content_type, audio_file, token, preview_mode, lang, translation, tts_item):
             update_status(content_id, platform, lang, 'published' if not preview_mode else 'preview')
             return True
         else:
@@ -237,42 +278,35 @@ def generate_multilingual_previews(content_id: str, content_type: str = 'post') 
     """Generate 5 multilingual post previews for different languages and platforms."""
     logger.info(f"Generating multilingual previews for content_id: {content_id}")
     token = generate_jwt_token()
+    tts_data = load_tts_content()
     
-    # Define 5 language-platform combinations
     preview_configs = [
-        {'lang': 'en', 'platform': 'instagram'},
-        {'lang': 'hi', 'platform': 'twitter'},
-        {'lang': 'mr', 'platform': 'linkedin'},
-        {'lang': 'ta', 'platform': 'sanatan'},
-        {'lang': 'te', 'platform': 'instagram'}
+        {'lang': 'en', 'platform': 'instagram', 'content_type': 'post'},
+        {'lang': 'hi', 'platform': 'linkedin', 'content_type': 'post'},
+        {'lang': 'sa', 'platform': 'sanatan', 'content_type': 'voice_script'},
+        {'lang': 'mr', 'platform': 'instagram', 'content_type': 'post'},
+        {'lang': 'ta', 'platform': 'linkedin', 'content_type': 'post'}
     ]
     
     previews = []
     for config in preview_configs:
         lang = config['lang']
         platform = config['platform']
+        content_type = config['content_type']
         
-        # Load translation preview
-        preview_file = os.path.join(PREVIEW_DIR, f"preview_{content_id}_{lang}.json")
-        if not os.path.exists(preview_file):
-            logger.error(f"Translation preview not found: {preview_file}")
+        content_file = get_content_file(content_id, content_type, lang, platform)
+        if not content_file:
+            logger.warning(f"No content file for preview: content_id={content_id}, lang={lang}, platform={platform}")
             continue
-        translation_preview = load_json(preview_file)
         
-        # Load metadata for original content
-        metadata_file = os.path.join(METADATA_DIR, f"metadata_{content_id}_instagram.json")
-        content = {'content_id': content_id}  # Use content_id as fallback
-        if os.path.exists(metadata_file):
-            logger.debug(f"Found metadata file: {metadata_file}")
-            content = load_json(metadata_file)
-        else:
-            logger.warning(f"Metadata file not found: {metadata_file}, using fallback content_id: {content_id}")
+        content = load_json(content_file)
+        translation = load_translated_content(content_id, lang)
+        tts_item = next((item for item in tts_data if item.get('content_id') == content_id and item.get('language') == lang and item.get('platform') == platform), None)
         
-        # Generate preview
-        audio_file = get_audio_file(content_id, lang, platform) if content_type == 'voice' else ''
-        success = publish_to_platform(platform, content, content_type, audio_file, token, preview_mode=True, lang=lang, preview=translation_preview)
+        audio_file = get_audio_file(content_id, lang, platform, tts_data) if content_type == 'voice_script' else ''
+        
+        success = publish_to_platform(platform, content, content_type, audio_file, token, preview_mode=True, lang=lang, translation=translation, tts_item=tts_item)
         if success:
-            # Find the generated post file
             for filename in os.listdir(SCHEDULED_POSTS_DIR):
                 if filename.startswith(f"post_{content_id}_{platform}_") and filename.endswith('.json'):
                     post_file = os.path.join(SCHEDULED_POSTS_DIR, filename)
@@ -288,13 +322,13 @@ def run_publisher_sim(selected_language: str, preview_mode: bool = False, max_at
     """Run Agent J: Platform Publisher."""
     logger.info(f"Starting Agent J: Platform Publisher for language: {selected_language} (preview_mode: {preview_mode})")
     
-    # Clear the scheduled_posts directory
     if os.path.exists(SCHEDULED_POSTS_DIR):
         shutil.rmtree(SCHEDULED_POSTS_DIR)
         logger.info(f"Cleared scheduled_posts directory: {SCHEDULED_POSTS_DIR}")
     os.makedirs(SCHEDULED_POSTS_DIR, exist_ok=True)
 
     token = generate_jwt_token()
+    tts_data = load_tts_content()
 
     processed_posts = []
     for attempt in range(1, max_attempts + 1):
@@ -306,7 +340,7 @@ def run_publisher_sim(selected_language: str, preview_mode: bool = False, max_at
             continue
 
         for content_id, platform, content_type, lang in due_posts:
-            success = publish_content(content_id, platform, content_type, token, lang, preview_mode)
+            success = publish_content(content_id, platform, content_type, token, lang, preview_mode, tts_data)
             status = 'published' if success and not preview_mode else 'preview' if success else 'failed'
             processed_posts.append(f"ID {content_id} ({platform}, {content_type}, {status}, lang: {lang})")
 
@@ -322,7 +356,7 @@ def main() -> None:
     parser.add_argument('language', nargs='?', choices=['en', 'hi', 'sa', 'all'], default=None, help="Language to process (en, hi, sa, all)")
     parser.add_argument('--preview', action='store_true', help="Run in preview mode (generate JSON without POST)")
     parser.add_argument('--multilingual-preview', action='store_true', help="Generate 5 multilingual post previews")
-    parser.add_argument('--content-id', default='1', help="Content ID for multilingual previews")
+    parser.add_argument('--content-id', default='1b4239cf-7c8f-40c1-b265-757111149621', help="Content ID for multilingual previews")
     args = parser.parse_args()
 
     if args.multilingual_preview:

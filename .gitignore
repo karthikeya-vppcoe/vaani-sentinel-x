@@ -12,15 +12,15 @@ logs/
 scheduler_db/
 
 # Generated content
-content/content_ready/en
-content/content_ready/hi
-content/content_ready/sa
-content/structured/content_blocks.json
-content/multilingual_ready/en
-content/multilingual_ready/hi
-content/multilingual_ready/sa
-analytics_db/post_metrics.json
-analytics_db/strategy_suggestions.json
+# content/content_ready/en
+# content/content_ready/hi
+# content/content_ready/sa
+# content/structured/content_blocks.json
+# content/multilingual_ready/en
+# content/multilingual_ready/hi
+# content/multilingual_ready/sa
+# analytics_db/post_metrics.json
+# analytics_db/strategy_suggestions.json
 
 # Node modules (in case any exist in root)
 node_modules/
