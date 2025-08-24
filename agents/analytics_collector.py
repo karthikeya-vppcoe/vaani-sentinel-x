@@ -20,6 +20,7 @@ file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 logger.handlers = [file_handler, logging.StreamHandler()]
 logger.info("Initializing analytics_collector.py")
 
+
 def generate_engagement_stats(platform: str, language: str, tone: str) -> Dict:
     """Generate realistic dummy engagement stats."""
     ranges = {
@@ -39,6 +40,7 @@ def generate_engagement_stats(platform: str, language: str, tone: str) -> Dict:
         'retweets': int(random.uniform(*stats.get('retweets', (0, 0))) * multiplier) if platform == 'twitter' else 0,
         'quotes': int(random.uniform(*stats.get('quotes', (0, 0))) * multiplier) if platform == 'twitter' else 0
     }
+
 
 def run_analytics_collector(input_dir: str, output_dir: str, languages: List[str] = ['en', 'hi', 'sa']) -> None:
     """Run Agent K: Analytics Collector."""
@@ -87,6 +89,7 @@ def run_analytics_collector(input_dir: str, output_dir: str, languages: List[str
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
     logger.info(f"Saved {len(metrics)} metrics to {output_path}")
+
 
 if __name__ == "__main__":
     input_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scheduled_posts')

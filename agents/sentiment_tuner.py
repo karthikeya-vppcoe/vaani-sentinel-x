@@ -3,7 +3,7 @@ import json
 import os
 import logging
 import re
-from typing import Dict, List
+from typing import List
 from groq import AsyncGroq
 import asyncio
 from datetime import datetime, timezone
@@ -22,6 +22,7 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 logger.handlers = [file_handler, logging.StreamHandler()]
+
 
 def regex_tune_sentiment(text: str, sentiment: str, language: str) -> str:
     """Regex-based sentiment tuning for Hindi/Sanskrit."""
@@ -48,6 +49,7 @@ def regex_tune_sentiment(text: str, sentiment: str, language: str) -> str:
             return text
     return text
 
+
 async def tune_sentiment(text: str, sentiment: str, language: str, client: AsyncGroq = None) -> str:
     """Adjust text sentiment using Groq API (English) or regex (Hindi/Sanskrit, fallback)."""
     if not text:
@@ -57,14 +59,14 @@ async def tune_sentiment(text: str, sentiment: str, language: str, client: Async
     if language != 'en' or not client:
         logger.info(f"Using regex-based tuning for {language} (sentiment: {sentiment})")
         return regex_tune_sentiment(text, sentiment, language)
-    
+
     sentiment_prompts = {
         'uplifting': 'Rewrite this text to have an uplifting and positive tone suitable for the Instagram platform, keeping it concise and natural.',
         'neutral': 'Rewrite this text to have a neutral and factual tone, avoiding emotional embellishments, suitable for Instagram.',
         'devotional': 'Rewrite this text to have a devotional and spiritual tone suitable for Instagram audiences.'
     }
     prompt = f"{sentiment_prompts.get(sentiment, 'neutral')} Text: {text}"
-    
+
     try:
         response = await client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
@@ -85,6 +87,7 @@ async def tune_sentiment(text: str, sentiment: str, language: str, client: Async
     except Exception as e:
         logger.error(f"Groq API failed for text '{text[:50]}...' (sentiment: {sentiment}, lang: {language}): {str(e)}")
         return regex_tune_sentiment(text, sentiment, language)
+
 
 async def process_file(input_file: str, sentiment: str, languages: List[str] = None) -> None:
     """Process a single personalized content file with sentiment tuning."""
@@ -109,11 +112,11 @@ async def process_file(input_file: str, sentiment: str, languages: List[str] = N
 
     entry_id = f"{entry.get('content_id', 'unknown')}_{entry.get('user_id', 'unknown')}_{entry.get('tone', 'unknown')}"
     text = entry.get('personalized_text', '')
-    
+
     client = None
     if language == 'en' and os.getenv('GROQ_API_KEY'):
         client = AsyncGroq()
-    
+
     try:
         tuned_text = await tune_sentiment(text, sentiment, language, client)
         updated_entry = entry.copy()
@@ -125,7 +128,7 @@ async def process_file(input_file: str, sentiment: str, languages: List[str] = N
             'sentiment_tuned': tuned_text
         }
         updated_entry['timestamp'] = datetime.now(timezone.utc).isoformat()
-        
+
         with open(input_file, 'w', encoding='utf-8') as f:
             json.dump(updated_entry, f, ensure_ascii=False, indent=2)
         logger.info(f"Tuned sentiment to {sentiment} for entry {entry_id} (language: {language}, file: {input_file})")
@@ -140,32 +143,34 @@ async def process_file(input_file: str, sentiment: str, languages: List[str] = N
             'sentiment_tuned': text
         }
         updated_entry['timestamp'] = datetime.now(timezone.utc).isoformat()
-        
+
         with open(input_file, 'w', encoding='utf-8') as f:
             json.dump(updated_entry, f, ensure_ascii=False, indent=2)
         logger.info(f"Tuned (fallback) sentiment to {sentiment} for entry {entry_id} (language: {language}, file: {input_file})")
 
+
 async def run_sentiment_tuner_async(content_id: str, platform: str, user_id: str, sentiment: str, languages: List[str] = None) -> None:
     """Run Agent H: Sentiment Tuner on personalized content files."""
     logger.info(f"Starting Agent H: Sentiment Tuner for content_id: {content_id}, platform: {platform}, user_id: {user_id}, sentiment: {sentiment}, languages: {languages or 'all'}")
-    
+
     # Search all pipelines under content_ready
     base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
     pattern = os.path.join(base_dir, 'content', 'content_ready', '*', '*', f'personalized_{content_id}_{platform}_{user_id}.json')
     input_files = glob.glob(pattern, recursive=True)
-    
+
     if not input_files:
         logger.error(f"No personalized content files found for content_id {content_id}, platform {platform}, user_id {user_id}. Tried pattern: {pattern}")
         logger.info(f"Hint: Run personalization_agent.py for content_id {content_id} to generate files in the correct pipeline.")
         return
-    
+
     logger.info(f"Found {len(input_files)} files: {input_files}")
-    
+
     # Process each file
     tasks = [process_file(input_file, sentiment, languages) for input_file in input_files]
     await asyncio.gather(*tasks)
-    
+
     logger.info(f"Sentiment tuning completed for {len(input_files)} files")
+
 
 def run_sentiment_tuner() -> None:
     """Wrapper to run the async function with CLI arguments."""
@@ -177,9 +182,10 @@ def run_sentiment_tuner() -> None:
                         help="Sentiment to apply (uplifting, neutral, devotional)")
     parser.add_argument('--languages', help="Comma-separated list of languages to process (e.g., en,hi,sa)")
     args = parser.parse_args()
-    
+
     languages = args.languages.split(',') if args.languages else None
     asyncio.run(run_sentiment_tuner_async(args.content_id, args.platform, args.user_id, args.sentiment, languages))
+
 
 if __name__ == "__main__":
     run_sentiment_tuner()

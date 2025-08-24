@@ -59,6 +59,7 @@ WHITELIST = {
     'twitter': {'mild_opinionated': ['amazing']}     # Allow 'amazing' in Twitter posts
 }
 
+
 def generate_checksum(data: bytes) -> str:
     """Generate SHA-256 checksum for data."""
     try:
@@ -66,6 +67,7 @@ def generate_checksum(data: bytes) -> str:
     except Exception as e:
         logger.error(f"Failed to generate checksum: {str(e)}")
         return ""
+
 
 def encrypt_content(content: Dict, output_path: str) -> str:
     """Encrypt content and save to output path, return checksum."""
@@ -88,6 +90,7 @@ def encrypt_content(content: Dict, output_path: str) -> str:
         logger.error(f"Failed to encrypt content to {output_path}: {str(e)}")
         return ""
 
+
 def save_to_alert_dashboard(flagged_items: List[Dict]) -> None:
     """Save flagged items to the alert dashboard JSON file, overwriting previous content."""
     dashboard_path = os.path.join(logs_dir, 'alert_dashboard.json')
@@ -99,6 +102,7 @@ def save_to_alert_dashboard(flagged_items: List[Dict]) -> None:
     except Exception as e:
         logger.error(f"Failed to save to alert dashboard at {dashboard_path}: {str(e)}")
 
+
 def flag_content(file_path: str, flagged_ids: Set[str], flagged_items: List[Dict]) -> int:
     """Flag content for bias and return number of flagged items."""
     flagged_count = 0
@@ -106,7 +110,7 @@ def flag_content(file_path: str, flagged_ids: Set[str], flagged_items: List[Dict
         with open(file_path, 'r', encoding='utf-8') as f:
             content = json.load(f)
         blocks = content if isinstance(content, list) else [content]
-        
+
         # Determine language and platform from file path
         language = None
         platform = None
@@ -129,7 +133,7 @@ def flag_content(file_path: str, flagged_ids: Set[str], flagged_items: List[Dict
             content_id = block.get('id')
             if not content_id or content_id in flagged_ids:
                 continue
-            
+
             # Determine language: for content_ready, use directory-based language; for content_blocks, use block's language field
             if is_content_ready:
                 block_language = language  # Use directory-based language
@@ -267,7 +271,7 @@ def flag_content(file_path: str, flagged_ids: Set[str], flagged_items: List[Dict
                 if platform and platform in WHITELIST:
                     if 'religious' in WHITELIST[platform] and flagged_term.lower() in [term.lower() for term in WHITELIST[platform]['religious']]:
                         is_safe_context = True
-                
+
                 if is_safe_context:
                     logger.info(f"Religious term '{flagged_term}' is safe for ID {content_id} (language: {block_language}, platform: {platform})")
                     continue
@@ -301,6 +305,7 @@ def flag_content(file_path: str, flagged_ids: Set[str], flagged_items: List[Dict
         logger.error(f"Failed to flag content in {file_path}: {str(e)}")
     return flagged_count
 
+
 def clear_all_encrypted_directories() -> None:
     """Clear all encrypted directories in the archives folder."""
     archives_dir = os.path.join(script_dir, '..', 'archives')
@@ -314,6 +319,7 @@ def clear_all_encrypted_directories() -> None:
     except Exception as e:
         logger.error(f"Failed to clear encrypted directories in {archives_dir}: {str(e)}")
 
+
 def clear_encrypted_directory(lang: str) -> None:
     """Clear the encrypted output directory for the specified language."""
     encrypted_dir = os.path.join(script_dir, '..', 'archives', f'encrypted_{lang}')
@@ -321,6 +327,7 @@ def clear_encrypted_directory(lang: str) -> None:
         os.makedirs(encrypted_dir, exist_ok=True)
     except Exception as e:
         logger.error(f"Failed to create encrypted directory {encrypted_dir}: {str(e)}")
+
 
 def process_security(selected_language: str) -> None:
     """Run Agent E: Security & Ethics Guard for the specified language."""
@@ -393,13 +400,15 @@ def process_security(selected_language: str) -> None:
     logger.info(f"Flagged {total_flagged} potentially controversial items")
     logger.info(f"Completed security processing at {datetime.now().isoformat()}")
 
+
 def main() -> None:
     """Main function to run the security guard with a language argument."""
     parser = argparse.ArgumentParser(description="Run Agent E: Security & Ethics Guard")
     parser.add_argument('language', choices=['en', 'hi', 'sa', 'all'], help="Language to process (en, hi, sa, all)")
     args = parser.parse_args()
-    
+
     process_security(args.language)
+
 
 if __name__ == "__main__":
     main()

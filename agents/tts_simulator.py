@@ -6,7 +6,6 @@ import uuid
 import re
 from datetime import datetime, timezone
 from typing import Dict, List
-from pathlib import Path
 
 # Logging setup for TTS Simulator
 USER_ID = 'tts_sim_user'
@@ -23,6 +22,7 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 logger.handlers = [file_handler, logging.StreamHandler()]
+
 
 class TTSSimulator:
     def __init__(self):
@@ -143,9 +143,9 @@ class TTSSimulator:
         """Simulates TTS output and creates tts_simulation_output.json.
 
         Args:
-            personalized_content_path (str): Path to content_final directory (e.g., E:\projects\vaani-sentinel-x\content\content_final).
+            personalized_content_path (str): Path to content_final directory (e.g., E:/projects/vaani-sentinel-x/content/content_final).
             language_voice_map_path (str): Path to language_voice_map.json or updated_language_voice_map.json.
-            output_path (str): Path to save tts_simulation_output.json (e.g., E:\projects\vaani-sentinel-x\data\tts_simulation_output.json).
+            output_path (str): Path to save tts_simulation_output.json (e.g., E:/projects/vaani-sentinel-x/data/tts_simulation_output.json).
             content_id (str): Content ID to process (e.g., 1b4239cf-7c8f-40c1-b265-757111149621).
         """
         logger.info("Starting TTS simulation for content_id: %s, content_path: %s, voice_map: %s, output: %s", content_id, personalized_content_path, language_voice_map_path, output_path)
@@ -200,6 +200,7 @@ class TTSSimulator:
             logger.info("Saved TTS simulation output to %s", output_path)
         except Exception as e:
             logger.error("Failed to save TTS simulation output to %s: %s", output_path, str(e))
+
 
 if __name__ == '__main__':
     import argparse

@@ -62,6 +62,7 @@ VALID_PIPELINES = {
     'arabic_pipeline': {'range': (0x0600, 0x06FF), 'description': 'Arabic script'}
 }
 
+
 def validate_pipelines() -> None:
     """Validate that all pipelines in PIPELINES are defined in VALID_PIPELINES."""
     for lang, pipeline in PIPELINES.items():
@@ -69,6 +70,7 @@ def validate_pipelines() -> None:
             logger.error(f"Invalid pipeline '{pipeline}' for language '{lang}'")
             raise ValueError(f"Pipeline '{pipeline}' not defined in VALID_PIPELINES")
     logger.info("All pipelines validated successfully")
+
 
 def load_input_data(input_file: str) -> List[Dict]:
     """Load records from CSV or JSON."""
@@ -91,6 +93,7 @@ def load_input_data(input_file: str) -> List[Dict]:
         logger.error(f"Failed to load {input_file}: {str(e)}")
         return []
 
+
 def load_facts(facts_file: str) -> List[str]:
     """Load facts for sanitization."""
     try:
@@ -101,6 +104,7 @@ def load_facts(facts_file: str) -> List[str]:
     except Exception as e:
         logger.error(f"Failed to load facts: {str(e)}")
         return []
+
 
 def load_user_profiles(profile_file: str) -> List[Dict]:
     """Load user profiles, handling list or dict formats."""
@@ -116,28 +120,29 @@ def load_user_profiles(profile_file: str) -> List[Dict]:
                 json.dump(default_profile, f, indent=2)
             logger.info(f"Created default user_profile.json at {profile_file}")
             return default_profile["profiles"]
-        
+
         with open(profile_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
+
         if isinstance(data, list):
-            logger.warning(f"user_profile.json contains a list, expected dict with 'profiles' key.")
+            logger.warning("user_profile.json contains a list, expected dict with 'profiles' key.")
             profiles = data
         elif isinstance(data, dict):
             profiles = data.get('profiles', [])
         else:
             logger.error(f"Invalid user_profile.json format: {type(data)}. Returning default profile.")
             return [{"user_id": "default", "preferred_languages": list(SUPPORTED_LANGUAGES), "preferred_tone": "neutral"}]
-        
+
         if not profiles:
             logger.warning("No profiles found in user_profile.json. Using default profile.")
             profiles = [{"user_id": "default", "preferred_languages": list(SUPPORTED_LANGUAGES), "preferred_tone": "neutral"}]
-        
+
         logger.info(f"Loaded {len(profiles)} user profiles")
         return profiles
     except Exception as e:
         logger.error(f"Failed to load user profiles: {str(e)}. Returning default profile.")
         return [{"user_id": "default", "preferred_languages": list(SUPPORTED_LANGUAGES), "preferred_tone": "neutral"}]
+
 
 def detect_language(text: str, provided_lang: str = None) -> str:
     """Detect language, prioritizing provided language from input data."""
@@ -147,7 +152,7 @@ def detect_language(text: str, provided_lang: str = None) -> str:
     try:
         lang = detect(text)
         if lang == 'zh-cn':
-            logger.info(f"Mapped zh-cn to zh")
+            logger.info("Mapped zh-cn to zh")
             return 'zh'
         if lang not in SUPPORTED_LANGUAGES:
             logger.warning(f"Unsupported language '{lang}', skipping record")
@@ -158,9 +163,11 @@ def detect_language(text: str, provided_lang: str = None) -> str:
         logger.warning("Language detection failed, skipping record")
         return None
 
+
 def check_profanity(text: str) -> bool:
     """Check for profanity in text."""
     return profanity.contains_profanity(text)
+
 
 def detect_bias(text: str) -> str:
     """Detect if content is neutral or biased."""
@@ -171,9 +178,11 @@ def detect_bias(text: str) -> str:
             return 'biased'
     return 'neutral'
 
+
 def validate_against_facts(text: str, facts: List[str]) -> bool:
     """Validate text against truth-source facts."""
     return any(text.lower() in fact.lower() or fact.lower() in text.lower() for fact in facts)
+
 
 def sanitize_text(text: str, pipeline: str) -> str:
     """Sanitize text based on pipeline."""
@@ -190,6 +199,7 @@ def sanitize_text(text: str, pipeline: str) -> str:
         logger.error(f"Sanitization failed: {str(e)}")
         return text
 
+
 def clear_output_directory(output_dir: str, metadata_dir: str) -> None:
     """Clear existing output files."""
     for file in os.listdir(output_dir):
@@ -200,6 +210,7 @@ def clear_output_directory(output_dir: str, metadata_dir: str) -> None:
         shutil.rmtree(metadata_dir)
         logger.info(f"Deleted existing metadata directory: {metadata_dir}")
     os.makedirs(metadata_dir, exist_ok=True)
+
 
 def save_metadata(block: Dict, metadata_dir: str) -> None:
     """Save metadata for all platforms."""
@@ -224,35 +235,36 @@ def save_metadata(block: Dict, metadata_dir: str) -> None:
         except Exception as e:
             logger.error(f"Failed to save metadata to {metadata_file}: {str(e)}")
 
+
 def run_miner_sanitizer(input_file: str, languages: List[str], platforms: List[str], sentiment: str, user_id: str = "default") -> None:
     """Run Agent A/F: Knowledge Miner & Sanitizer."""
     logger.info(f"Starting Agent A/F: Knowledge Miner & Sanitizer (sentiment: {sentiment}, user: {user_id})")
-    
+
     # Validate pipelines
     validate_pipelines()
-    
+
     # File paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(script_dir, '..', 'content', 'structured')
     metadata_dir = os.path.join(output_dir, 'metadata')
     profile_file = os.path.join(script_dir, '..', 'config', 'user_profile.json')
     facts_file = os.path.join(script_dir, '..', 'content', 'raw', 'truth-source.csv')
-    
+
     # Clear output directory
     clear_output_directory(output_dir, metadata_dir)
-    
+
     # Load data
     records = load_input_data(input_file)
     facts = load_facts(facts_file)
     profiles = load_user_profiles(profile_file)
-    
+
     # Find user profile
     user_profile = next((p for p in profiles if p['user_id'] == user_id), profiles[0])
-    
+
     if not records:
         logger.error("No records loaded, exiting")
         return
-    
+
     # Process records
     blocks = []
     for record in records:
@@ -265,7 +277,7 @@ def run_miner_sanitizer(input_file: str, languages: List[str], platforms: List[s
             continue
         pipeline = PIPELINES.get(lang, 'latin_pipeline')
         sanitized_text = sanitize_text(text, pipeline)
-        
+
         # Verification
         if check_profanity(sanitized_text):
             logger.warning(f"Profanity detected in text: {sanitized_text}")
@@ -274,7 +286,7 @@ def run_miner_sanitizer(input_file: str, languages: List[str], platforms: List[s
         if not validate_against_facts(sanitized_text, facts):
             logger.warning(f"Text does not match truth-source: {sanitized_text}")
             continue
-        
+
         content_id = str(uuid.uuid4())
         block = {
             'content_id': content_id,
@@ -299,7 +311,7 @@ def run_miner_sanitizer(input_file: str, languages: List[str], platforms: List[s
         blocks.append(block)
         logger.info(f"Sanitized block ID {content_id} (lang: {lang}, pipeline: {pipeline})")
         save_metadata(block, metadata_dir)
-    
+
     # Save blocks
     if blocks:
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
@@ -312,6 +324,7 @@ def run_miner_sanitizer(input_file: str, languages: List[str], platforms: List[s
     else:
         logger.warning("No blocks to save")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vaani Sentinel X: Miner & Sanitizer")
     parser.add_argument('--input', required=True, help="Input CSV or JSON file")
@@ -320,5 +333,5 @@ if __name__ == "__main__":
     parser.add_argument('--sentiment', choices=ALLOWED_SENTIMENTS, default='neutral', help="Sentiment for processing")
     parser.add_argument('--user-id', default='default', help="User ID for profile selection")
     args = parser.parse_args()
-    
+
     run_miner_sanitizer(args.input, args.languages, args.platforms, args.sentiment, args.user_id)

@@ -3,10 +3,7 @@ import os
 import logging
 import glob
 import re
-import shutil
 import argparse
-from datetime import datetime
-from typing import Dict, List
 import platform
 import uuid
 
@@ -23,6 +20,7 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 logger.handlers = [file_handler]
+
 
 def tailor_content(content: str, platform: str, content_type: str, language: str) -> str:
     """Tailor content for specific platform and type (Task 2: Agent I)."""
@@ -139,6 +137,7 @@ def tailor_content(content: str, platform: str, content_type: str, language: str
         logger.error(f"Failed to tailor content for {platform} {content_type} (lang: {language}): {str(e)}")
         return content.strip()
 
+
 def regenerate_tts(voice_file: str, tailored_content: str, lang: str) -> bool:
     """Regenerate the corresponding MP3 file for a voice script, ensuring only one MP3 per voice script."""
     try:
@@ -172,6 +171,7 @@ def regenerate_tts(voice_file: str, tailored_content: str, lang: str) -> bool:
         logger.error(f"Failed to regenerate TTS for {voice_file}: {str(e)}")
         return False
 
+
 def clear_mp3_files(lang_dir: str) -> None:
     """Clear all existing MP3 files in the specified directory."""
     try:
@@ -182,12 +182,13 @@ def clear_mp3_files(lang_dir: str) -> None:
     except Exception as e:
         logger.error(f"Failed to clear MP3 files in {lang_dir}: {str(e)}")
 
+
 def process_files(input_dir: str, lang: str) -> None:
     """Process content files for a given language, avoiding duplicates (Task 2: Agent I)."""
     # Compute absolute path for input_dir
     abs_input_dir = os.path.abspath(input_dir)
     lang_dir = os.path.join(abs_input_dir, lang)
-    
+
     # Debug: Log the absolute path and check if the directory exists
     logger.info(f"Looking for files in absolute path: {lang_dir}")
     if not os.path.exists(lang_dir):
@@ -325,6 +326,7 @@ def process_files(input_dir: str, lang: str) -> None:
         except Exception as e:
             logger.error(f"Failed to process voice file {voice_file}: {str(e)}")
 
+
 def run_adaptive_targeter(selected_language: str) -> None:
     """Run Agent I: Context-Aware Platform Targeter for the specified language (Task 2)."""
     logger.info(f"Starting Agent I: Context-Aware Platform Targeter for language: {selected_language}")
@@ -332,7 +334,7 @@ def run_adaptive_targeter(selected_language: str) -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     input_dir = os.path.join(script_dir, '..', 'content', 'content_ready')
     logger.info(f"Input directory (absolute path): {input_dir}")
-    
+
     languages_to_process = ['en', 'hi', 'sa'] if selected_language == 'all' else [selected_language]
     for lang in languages_to_process:
         lang_dir = os.path.join(input_dir, lang)
@@ -345,13 +347,15 @@ def run_adaptive_targeter(selected_language: str) -> None:
             logger.error(f"Failed to process content for {lang}: {str(e)}")
     logger.info("Completed content tailoring")
 
+
 def main() -> None:
     """Main function to run the adaptive targeter with a language argument."""
     parser = argparse.ArgumentParser(description="Run Agent I: Context-Aware Platform Targeter")
     parser.add_argument('language', choices=['en', 'hi', 'sa', 'all'], help="Language to process (en, hi, sa, all)")
     args = parser.parse_args()
-    
+
     run_adaptive_targeter(args.language)
+
 
 if __name__ == "__main__":
     main()
