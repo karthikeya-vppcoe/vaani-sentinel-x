@@ -1,0 +1,147 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vaani-sentinel-x"
+version = "1.0.0"
+description = "AI-integrated, voice-first platform for autonomous content generation and social media management"
+authors = [
+    {name = "Karthikeya VPPCOE", email = "contact@vaani.com"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    # Core dependencies
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "cryptography>=41.0.7",
+    
+    # AI and NLP
+    "groq>=0.8.0",
+    "textblob>=0.18.0",
+    "better-profanity>=0.7.0",
+    "langdetect>=1.0.9",
+    "google-generativeai>=0.8.0",
+    
+    # Text-to-Speech and Audio
+    "gtts>=2.5.1",
+    
+    # Database and Storage
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    
+    # Web framework
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    
+    # Authentication and Security
+    "PyJWT>=2.8.0",
+    
+    # Async support
+    "tenacity>=8.0.0",
+    
+    # Utilities
+    "colorama>=0.4.6",
+    "click>=8.1.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.5.0",
+    "isort>=5.13.0",
+]
+
+[project.scripts]
+vaani-cli = "cli.command_center:main"
+
+[project.urls]
+Homepage = "https://github.com/karthikeya-vppcoe/vaani-sentinel-x"
+Repository = "https://github.com/karthikeya-vppcoe/vaani-sentinel-x"
+Issues = "https://github.com/karthikeya-vppcoe/vaani-sentinel-x/issues"
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | venv
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 88
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --strict-markers --disable-warnings"
+testpaths = [
+    "tests",
+]
+python_files = [
+    "test_*.py",
+    "*_test.py",
+]
+
+[tool.coverage.run]
+source = ["agents", "cli"]
+omit = [
+    "tests/*",
+    "venv/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false

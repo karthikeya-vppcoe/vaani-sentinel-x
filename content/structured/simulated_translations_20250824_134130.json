@@ -1,0 +1,30 @@
+[
+  {
+    "id": "757365f8-4ee4-4224-bc3e-aeddfb76d2c2",
+    "original_id": null,
+    "text": "[SIMULATED: '' from en to hi]",
+    "source_language": "en",
+    "target_language": "hi",
+    "translation_type": "simulated",
+    "timestamp": "2025-08-24T13:41:30.022960+00:00",
+    "metadata": {
+      "original_text": "",
+      "translation_confidence": 0.85,
+      "method": "keyword_matching"
+    }
+  },
+  {
+    "id": "70d6bba7-0687-463b-a49d-bfee5389ce6d",
+    "original_id": null,
+    "text": "[SIMULATED: '' from en to sa]",
+    "source_language": "en",
+    "target_language": "sa",
+    "translation_type": "simulated",
+    "timestamp": "2025-08-24T13:41:30.022979+00:00",
+    "metadata": {
+      "original_text": "",
+      "translation_confidence": 0.85,
+      "method": "keyword_matching"
+    }
+  }
+]

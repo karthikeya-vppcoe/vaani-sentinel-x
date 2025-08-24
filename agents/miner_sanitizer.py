@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import logging
 import argparse
@@ -10,25 +11,19 @@ import hashlib
 import uuid
 from better_profanity import profanity
 
-# Logging setup
-USER_ID = 'agent_a_user'
-logger = logging.getLogger('miner_sanitizer')
-logger.setLevel(logging.INFO)
-log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
-os.makedirs(log_dir, exist_ok=True)
-log_path = os.path.join(log_dir, 'miner_sanitizer.txt')
-file_handler = logging.FileHandler(log_path, encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
-file_handler.setFormatter(formatter)
-file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
-logger.handlers = [file_handler]
+# Add parent directory to path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-# Supported languages and pipelines
-SUPPORTED_LANGUAGES = {
-    'en', 'hi', 'sa', 'mr', 'ta', 'te', 'kn', 'ml', 'bn', 'gu', 'pa',
-    'es', 'fr', 'de', 'zh', 'ja', 'ru', 'ar', 'pt', 'it'
-}
+from config.settings import get_config
+from utils.common import setup_logger, validate_input, sanitize_text, safe_json_load, safe_json_save, generate_content_id, generate_checksum
+
+# Initialize configuration and logging
+config = get_config()
+USER_ID = 'agent_a_user'
+logger = setup_logger('miner_sanitizer', USER_ID)
+
+# Use configuration for supported languages and pipelines
+SUPPORTED_LANGUAGES = set(config.agents.supported_languages)
 PIPELINES = {
     'hi': 'devanagari_pipeline',
     'sa': 'devanagari_pipeline',

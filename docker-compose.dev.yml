@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Development version of Vaani Sentinel X
+  vaani-app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    container_name: vaani-sentinel-x-dev
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=development
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=5000
+      - WEB_DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - LOG_CONSOLE_ENABLED=true
+      - ENABLE_DEBUG_ENDPOINTS=true
+      - MOCK_EXTERNAL_APIS=true
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+      - "8000:8000"  # Debug port
+    volumes:
+      # Mount source code for development
+      - .:/app
+      - vaani_dev_logs:/app/logs
+      - vaani_dev_data:/app/data
+    networks:
+      - vaani-dev-network
+    command: ["python", "cli/command_center.py", "list"]
+
+  # Redis for development
+  redis-dev:
+    image: redis:7-alpine
+    container_name: vaani-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    networks:
+      - vaani-dev-network
+    command: redis-server --appendonly yes
+
+networks:
+  vaani-dev-network:
+    driver: bridge
+
+volumes:
+  vaani_dev_logs:
+  vaani_dev_data:

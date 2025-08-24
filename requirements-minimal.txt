@@ -1,0 +1,37 @@
+# Core dependencies for Vaani Sentinel X
+# Production-ready package versions with security updates
+
+# Core Python libraries
+requests>=2.31.0
+python-dotenv>=1.0.0
+cryptography>=41.0.7
+
+# AI and NLP
+groq>=0.8.0
+textblob>=0.18.0
+better-profanity>=0.7.0
+langdetect>=1.0.9
+
+# Text-to-Speech and Audio
+gtts>=2.5.1
+
+# Database and Storage
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Web framework (for API endpoints)
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Authentication and Security
+PyJWT>=2.8.0
+
+# Utilities
+colorama>=0.4.6
+click>=8.1.6
+
+# Development and Testing (optional - can be moved to requirements-dev.txt)
+pytest>=8.0.0
+black>=24.0.0
+flake8>=7.0.0
+mypy>=1.8.0

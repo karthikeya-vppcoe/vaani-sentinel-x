@@ -6,41 +6,43 @@ import json
 from datetime import datetime, timezone
 from typing import Dict, Optional, List, Tuple
 
-# Logging setup
+# Add utils and config to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from config.settings import get_config
+from utils.common import setup_logger, HealthChecker, validate_input, get_timestamp
+
+# Initialize configuration and logging
+config = get_config()
 USER_ID = 'command_center_user'
-logger = logging.getLogger('command_center')
-logger.setLevel(logging.INFO)
-log_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
-os.makedirs(log_dir, exist_ok=True)
-file_handler = logging.FileHandler(os.path.join(log_dir, 'command_center.txt'), encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(message)s')
-file_handler.setFormatter(formatter)
-file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
-logger.handlers = [file_handler]
+logger = setup_logger('command_center', USER_ID)
 
 # Process tracking
 active_processes: Dict[str, subprocess.Popen] = {}
 active_pipelines: Dict[str, List[str]] = {}
 
-# Agent configuration
-AGENTS = {
-    'miner_sanitizer': {'name': 'Knowledge Miner & Sanitizer', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'miner_sanitizer.py')},
-    'multilingual_pipeline': {'name': 'Multilingual Pipeline', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'multilingual_pipeline.py')},
-    'translation_agent': {'name': 'Translator', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'translation_agent.py')},
-    'personalization_agent': {'name': 'Personalizer', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'personalization_agent.py')},
-    'sentiment_tuner': {'name': 'Sentiment Tuner', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'sentiment_tuner.py')},
-    'ai_writer_voicegen': {'name': 'AI Writer & Voice Generator', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'ai_writer_voicegen.py')},
-    'tts_simulator': {'name': 'TTS Simulator', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'tts_simulator.py')},
-    'security_guard': {'name': 'Security Guard', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'security_guard.py')},
-    'adaptive_targeter': {'name': 'Adaptive Targeter', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'adaptive_targeter.py')},
-    'publisher_sim': {'name': 'Publisher Simulator', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'publisher_sim.py')},
-    'analytics_collector': {'name': 'Analytics Collector', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'analytics_collector.py')},
-    'strategy_recommender': {'name': 'Strategy Recommender', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'strategy_recommender.py')},
-    'scheduler': {'name': 'Scheduler', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'scheduler.py')},
-    'language_mapper': {'name': 'Language Mapper', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'language_mapper.py')},
-    'simulate_translation': {'name': 'Simulated Translation Generator', 'path': os.path.join(os.path.dirname(__file__), '..', 'agents', 'simulate_translation.py')}
-}
+# Agent configuration - now using config system
+def get_agent_paths() -> Dict[str, Dict[str, str]]:
+    """Get agent paths from configuration."""
+    base_path = config.get_absolute_path('agents')
+    return {
+        'miner_sanitizer': {'name': 'Knowledge Miner & Sanitizer', 'path': str(base_path / 'miner_sanitizer.py')},
+        'multilingual_pipeline': {'name': 'Multilingual Pipeline', 'path': str(base_path / 'multilingual_pipeline.py')},
+        'translation_agent': {'name': 'Translator', 'path': str(base_path / 'translation_agent.py')},
+        'personalization_agent': {'name': 'Personalizer', 'path': str(base_path / 'personalization_agent.py')},
+        'sentiment_tuner': {'name': 'Sentiment Tuner', 'path': str(base_path / 'sentiment_tuner.py')},
+        'ai_writer_voicegen': {'name': 'AI Writer & Voice Generator', 'path': str(base_path / 'ai_writer_voicegen.py')},
+        'tts_simulator': {'name': 'TTS Simulator', 'path': str(base_path / 'tts_simulator.py')},
+        'security_guard': {'name': 'Security Guard', 'path': str(base_path / 'security_guard.py')},
+        'adaptive_targeter': {'name': 'Adaptive Targeter', 'path': str(base_path / 'adaptive_targeter.py')},
+        'publisher_sim': {'name': 'Publisher Simulator', 'path': str(base_path / 'publisher_sim.py')},
+        'analytics_collector': {'name': 'Analytics Collector', 'path': str(base_path / 'analytics_collector.py')},
+        'strategy_recommender': {'name': 'Strategy Recommender', 'path': str(base_path / 'strategy_recommender.py')},
+        'scheduler': {'name': 'Scheduler', 'path': str(base_path / 'scheduler.py')},
+        'language_mapper': {'name': 'Language Mapper', 'path': str(base_path / 'language_mapper.py')},
+        'simulate_translation': {'name': 'Simulated Translation Generator', 'path': str(base_path / 'simulate_translation.py')}
+    }
+
+AGENTS = get_agent_paths()
 
 # Pipeline definition
 PIPELINE: List[Tuple[str, str]] = [
@@ -61,10 +63,10 @@ PIPELINE: List[Tuple[str, str]] = [
     ("simulate_translation", "Helper: Simulated Translation Generator")
 ]
 
-# Allowed parameters
-ALLOWED_SENTIMENTS = ['uplifting', 'neutral', 'devotional']
-ALLOWED_LANGUAGES = ['en', 'hi', 'sa', 'mr', 'ta', 'te', 'kn', 'ml', 'bn', 'gu', 'pa', 'es', 'fr', 'de', 'zh', 'ja', 'ru', 'ar', 'pt', 'it']
-ALLOWED_PLATFORMS = ['twitter', 'instagram', 'linkedin', 'sanatan']
+# Use configuration for allowed parameters
+ALLOWED_SENTIMENTS = config.agents.supported_sentiments
+ALLOWED_LANGUAGES = config.agents.supported_languages
+ALLOWED_PLATFORMS = config.agents.supported_platforms
 
 # Paths
 CONTENT_DIR = os.path.join(os.path.dirname(__file__), '..', 'content', 'content_ready')
@@ -73,12 +75,31 @@ ANALYTICS_DB_DIR = os.path.join(os.path.dirname(__file__), '..', 'analytics_db')
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'content', 'raw')
 
 def validate_environment() -> bool:
-    """Validate required directories."""
-    for dir_path in [CONTENT_DIR, SCHEDULER_DB_DIR, ANALYTICS_DB_DIR, RAW_DIR]:
-        if not os.path.exists(dir_path):
-            logger.warning(f"Creating directory: {dir_path}")
-            os.makedirs(dir_path, exist_ok=True)
-    return True
+    """Validate required directories and configuration."""
+    try:
+        # Use health checker for comprehensive validation
+        health_checker = HealthChecker()
+        health_status = health_checker.full_health_check()
+        
+        # Check dependencies
+        missing_deps = [dep for dep, status in health_status['dependencies'].items() if not status]
+        if missing_deps:
+            logger.error(f"Missing dependencies: {missing_deps}")
+            return False
+        
+        # Check directories
+        missing_dirs = [dir_name for dir_name, status in health_status['directories'].items() if not status]
+        if missing_dirs:
+            logger.warning(f"Missing directories (will be created): {missing_dirs}")
+        
+        # Create directories using config
+        config._create_directories()
+        
+        logger.info("Environment validation completed successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Environment validation failed: {e}")
+        return False
 
 def run_agent(agent: str, languages: Optional[List[str]] = None, sentiment: Optional[str] = None, platform: Optional[str] = None, content_id: Optional[str] = None, input_file: Optional[str] = None) -> subprocess.Popen:
     """Run a single agent."""
@@ -272,9 +293,9 @@ def kill_pipeline(languages: List[str], platform: str = None, content_id: str = 
 
 def view_analytics() -> None:
     """View engagement metrics."""
-    metrics_path = os.path.join(ANALYTICS_DB_DIR, 'post_metrics.json')
+    metrics_path = config.get_absolute_path(f"{config.database.analytics_db_dir}/post_metrics.json")
     try:
-        if os.path.exists(metrics_path):
+        if metrics_path.exists():
             with open(metrics_path, 'r', encoding='utf-8') as f:
                 metrics = json.load(f)
             print("\n=== Engagement Metrics ===")
@@ -292,9 +313,9 @@ def view_analytics() -> None:
 
 def view_suggestions() -> None:
     """View strategy suggestions."""
-    suggestions_path = os.path.join(ANALYTICS_DB_DIR, 'strategy_suggestions.json')
+    suggestions_path = config.get_absolute_path(f"{config.database.analytics_db_dir}/strategy_suggestions.json")
     try:
-        if os.path.exists(suggestions_path):
+        if suggestions_path.exists():
             with open(suggestions_path, 'r', encoding='utf-8') as f:
                 suggestions = json.load(f)
             print("\n=== Strategy Suggestions ===")
@@ -308,6 +329,73 @@ def view_suggestions() -> None:
     except Exception as e:
         logger.error(f"Failed to view suggestions: {str(e)}")
         print(f"Error: Failed to view suggestions: {str(e)}")
+
+def health_check() -> None:
+    """Perform comprehensive health check of the system."""
+    print("\n=== Vaani Sentinel X Health Check ===")
+    print(f"Timestamp: {get_timestamp()}")
+    print(f"Environment: {config.environment}")
+    
+    try:
+        health_checker = HealthChecker()
+        health_status = health_checker.full_health_check()
+        
+        # Dependencies check
+        print("\n--- Dependencies Status ---")
+        for dep, status in health_status['dependencies'].items():
+            status_str = "✓ OK" if status else "✗ MISSING"
+            print(f"  {dep}: {status_str}")
+        
+        # Directories check
+        print("\n--- Directories Status ---")
+        for dir_name, status in health_status['directories'].items():
+            status_str = "✓ OK" if status else "✗ MISSING"
+            print(f"  {dir_name}: {status_str}")
+        
+        # Configuration files check
+        print("\n--- Configuration Files ---")
+        for file_name, status in health_status['config_files'].items():
+            status_str = "✓ OK" if status else "✗ MISSING"
+            print(f"  {file_name}: {status_str}")
+        
+        # API Keys check (without exposing values)
+        print("\n--- API Keys Status ---")
+        api_status = {
+            'GROQ_API_KEY': bool(config.apis.groq_api_key),
+            'GOOGLE_API_KEY': bool(config.apis.google_api_key),
+            'JWT_SECRET': bool(config.security.jwt_secret),
+            'SECRET_KEY': bool(config.web.secret_key),
+        }
+        for key, status in api_status.items():
+            status_str = "✓ SET" if status else "✗ NOT SET"
+            print(f"  {key}: {status_str}")
+        
+        # Overall status
+        overall_ok = (
+            all(health_status['dependencies'].values()) and
+            all(health_status['directories'].values()) and
+            all(health_status['config_files'].values())
+        )
+        
+        print(f"\n--- Overall Status ---")
+        print(f"System Status: {'✓ HEALTHY' if overall_ok else '✗ ISSUES DETECTED'}")
+        
+        if not overall_ok:
+            print("\nRecommendations:")
+            if not all(health_status['dependencies'].values()):
+                print("  - Install missing dependencies: pip install -r requirements-minimal.txt")
+            if not all(health_status['config_files'].values()):
+                print("  - Copy .env.template to .env and configure required settings")
+            if not config.apis.groq_api_key:
+                print("  - Set GROQ_API_KEY in .env for AI functionality")
+            if not config.security.jwt_secret:
+                print("  - Set JWT_SECRET in .env for security")
+        
+        return overall_ok
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        print(f"Health check failed: {e}")
+        return False
 
 def restart_agent(agent: str, languages: List[str] = None, sentiment: str = 'neutral', platform: str = None, content_id: str = None, input_file: str = None) -> None:
     """Restart an agent."""
@@ -368,6 +456,7 @@ def main() -> None:
         print("  restart-pipeline [--languages <lang1 lang2 ...>] [--sentiment <sentiment>] [--platform <platform>] [--content_id <id>] [--input <file>]\n    Restart a pipeline")
         print("  collect-analytics\n    Run analytics and view metrics")
         print("  suggest-strategy\n    Run strategy recommender and view suggestions")
+        print("  health\n    Perform system health check")
         print("  list\n    List agents and pipelines")
         print("\nParameters:")
         print(f"  Languages: {', '.join(ALLOWED_LANGUAGES)}")
@@ -535,6 +624,8 @@ def main() -> None:
     elif command == 'suggest-strategy':
         run_agent('strategy_recommender')
         view_suggestions()
+    elif command == 'health':
+        health_check()
     elif command == 'list':
         list_agents()
     else:

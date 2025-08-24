@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  # Main Vaani Sentinel X application
+  vaani-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: vaani-sentinel-x
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=5000
+      - LOG_LEVEL=INFO
+      - LOG_FILE_ENABLED=true
+      - LOG_CONSOLE_ENABLED=true
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persistent data volumes
+      - vaani_data:/app/data
+      - vaani_logs:/app/logs
+      - vaani_content:/app/content
+      - vaani_archives:/app/archives
+      - vaani_scheduled:/app/scheduled_posts
+      - vaani_scheduler_db:/app/scheduler_db
+      - vaani_analytics_db:/app/analytics_db
+    networks:
+      - vaani-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from utils.common import HealthChecker; hc = HealthChecker(); result = hc.full_health_check(); exit(0 if all(result['dependencies'].values()) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # Redis for caching and session management (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: vaani-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - vaani_redis:/data
+    networks:
+      - vaani-network
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-vaani-redis-pass}
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL database (for production scale)
+  postgres:
+    image: postgres:15-alpine
+    container_name: vaani-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vaani}
+      POSTGRES_USER: ${POSTGRES_USER:-vaani_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vaani_secure_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - vaani_postgres:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - vaani-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vaani_user} -d ${POSTGRES_DB:-vaani}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: vaani-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - vaani_nginx_logs:/var/log/nginx
+    networks:
+      - vaani-network
+    depends_on:
+      - vaani-app
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vaani-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - vaani_prometheus:/prometheus
+    networks:
+      - vaani-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+networks:
+  vaani-network:
+    driver: bridge
+
+volumes:
+  vaani_data:
+  vaani_logs:
+  vaani_content:
+  vaani_archives:
+  vaani_scheduled:
+  vaani_scheduler_db:
+  vaani_analytics_db:
+  vaani_redis:
+  vaani_postgres:
+  vaani_nginx_logs:
+  vaani_prometheus:
