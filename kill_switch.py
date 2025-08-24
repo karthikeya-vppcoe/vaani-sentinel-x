@@ -4,6 +4,8 @@ from pathlib import Path
 import logging
 
 # Custom filter to add user field to log records
+
+
 class UserFilter(logging.Filter):
     def __init__(self, user_id):
         super().__init__()
@@ -12,6 +14,7 @@ class UserFilter(logging.Filter):
     def filter(self, record):
         record.user = self.user_id
         return True
+
 
 # Configure logging
 USER_ID = "kill_switch_user"
@@ -36,6 +39,7 @@ stream_handler.addFilter(UserFilter(USER_ID))
 
 # Add handlers to the logger
 logger.handlers = [file_handler, stream_handler]
+
 
 def activate_kill_switch():
     """Delete pipeline output directories and files."""
@@ -73,6 +77,7 @@ def activate_kill_switch():
         else:
             logger.warning(f"File does not exist: {file_path}")
 
+
 def onerror_handler(func, path, exc_info):
     """Custom error handler for shutil.rmtree to handle permission issues."""
     import stat
@@ -85,6 +90,7 @@ def onerror_handler(func, path, exc_info):
             logger.error(f"Failed to delete {path}: {e}. File may be in use.")
     else:
         logger.error(f"Error deleting {path}: {exc_info[1]}")
+
 
 if __name__ == "__main__":
     activate_kill_switch()

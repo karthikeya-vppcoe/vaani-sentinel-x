@@ -3,7 +3,6 @@ import sys
 import logging
 import subprocess
 import json
-from datetime import datetime, timezone
 from typing import Dict, Optional, List, Tuple
 
 # Logging setup
@@ -72,6 +71,7 @@ SCHEDULER_DB_DIR = os.path.join(os.path.dirname(__file__), '..', 'scheduler_db')
 ANALYTICS_DB_DIR = os.path.join(os.path.dirname(__file__), '..', 'analytics_db')
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'content', 'raw')
 
+
 def validate_environment() -> bool:
     """Validate required directories."""
     for dir_path in [CONTENT_DIR, SCHEDULER_DB_DIR, ANALYTICS_DB_DIR, RAW_DIR]:
@@ -80,16 +80,17 @@ def validate_environment() -> bool:
             os.makedirs(dir_path, exist_ok=True)
     return True
 
+
 def run_agent(agent: str, languages: Optional[List[str]] = None, sentiment: Optional[str] = None, platform: Optional[str] = None, content_id: Optional[str] = None, input_file: Optional[str] = None) -> subprocess.Popen:
     """Run a single agent."""
     if agent not in AGENTS:
         logger.error(f"Unknown agent: {agent}")
         raise ValueError(f"Unknown agent: {agent}")
-    
+
     if not os.path.exists(AGENTS[agent]['path']):
         logger.error(f"Agent file not found: {AGENTS[agent]['path']}")
         raise FileNotFoundError(f"Agent file not found: {AGENTS[agent]['path']}")
-    
+
     cmd = [sys.executable, AGENTS[agent]['path']]
     if agent == 'miner_sanitizer':
         if input_file:
@@ -112,7 +113,7 @@ def run_agent(agent: str, languages: Optional[List[str]] = None, sentiment: Opti
             cmd.extend(['--content_id', content_id])
         if platform:
             cmd.extend(['--platform', platform])
-    
+
     logger.info(f"Executing command: {' '.join(cmd)}")
     try:
         process = subprocess.Popen(
@@ -127,21 +128,22 @@ def run_agent(agent: str, languages: Optional[List[str]] = None, sentiment: Opti
         logger.error(f"Error running {AGENTS[agent]['name']}: {str(e)}")
         raise
 
+
 def run_pipeline(languages: List[str], sentiment: str = 'neutral', platform: str = None, content_id: str = None, input_file: str = None) -> None:
     """Run the pipeline for specified languages."""
     if not validate_environment():
         return
-    
+
     pipeline_key = f"pipeline_{'_'.join(languages)}_{platform}_{content_id}" if platform and content_id else f"pipeline_{'_'.join(languages)}"
     if pipeline_key in active_pipelines:
         logger.warning(f"Pipeline {pipeline_key} is already running")
         print(f"Pipeline {pipeline_key} is already running")
         return
-    
+
     active_pipelines[pipeline_key] = []
     logger.info(f"Starting pipeline: {pipeline_key} (sentiment: {sentiment})")
     print(f"Starting pipeline: {pipeline_key} (sentiment: {sentiment})")
-    
+
     try:
         for agent_id, agent_name in PIPELINE:
             print(f"Running {agent_name}...")
@@ -156,7 +158,7 @@ def run_pipeline(languages: List[str], sentiment: str = 'neutral', platform: str
             )
             active_processes[agent_id] = process
             active_pipelines[pipeline_key].append(agent_id)
-            
+
             stdout, stderr = process.communicate()
             if stdout:
                 logger.info(stdout.strip())
@@ -164,7 +166,7 @@ def run_pipeline(languages: List[str], sentiment: str = 'neutral', platform: str
             if stderr:
                 logger.error(stderr.strip())
                 print(f"Error: {stderr.strip()}")
-            
+
             if process.returncode != 0:
                 logger.error(f"{agent_name} failed with code {process.returncode}")
                 print(f"Error: {agent_name} failed with code {process.returncode}")
@@ -172,13 +174,13 @@ def run_pipeline(languages: List[str], sentiment: str = 'neutral', platform: str
             else:
                 logger.info(f"{agent_name} completed successfully")
                 print(f"{agent_name} completed successfully")
-            
+
             if agent_id in active_processes:
                 del active_processes[agent_id]
-        
+
         logger.info(f"Pipeline {pipeline_key} completed successfully")
         print(f"Pipeline {pipeline_key} completed successfully")
-    
+
     except Exception as e:
         logger.error(f"Pipeline {pipeline_key} failed: {str(e)}")
         print(f"Pipeline {pipeline_key} failed: {str(e)}")
@@ -187,13 +189,14 @@ def run_pipeline(languages: List[str], sentiment: str = 'neutral', platform: str
         if pipeline_key in active_pipelines:
             del active_pipelines[pipeline_key]
 
+
 def view_logs(agent: Optional[str] = None) -> None:
     """View logs for an agent or all agents."""
     if not os.path.exists(log_dir):
         logger.error("No logs directory found")
         print("No logs directory found")
         return
-    
+
     if agent:
         if agent not in AGENTS:
             logger.error(f"Unknown agent: {agent}")
@@ -214,6 +217,7 @@ def view_logs(agent: Optional[str] = None) -> None:
                 with open(os.path.join(log_dir, log_file), 'r', encoding='utf-8') as f:
                     print(f.read())
 
+
 def view_alerts() -> None:
     """View security alerts."""
     alerts_path = os.path.join(log_dir, 'alert_dashboard.json')
@@ -233,13 +237,14 @@ def view_alerts() -> None:
         logger.error(f"Failed to view alerts: {str(e)}")
         print(f"Error: Failed to view alerts: {str(e)}")
 
+
 def kill_process(agent: str) -> None:
     """Kill a running agent process."""
     if agent not in active_processes:
         logger.warning(f"No active process for {AGENTS.get(agent, {}).get('name', agent)}")
         print(f"No active process for {AGENTS.get(agent, {}).get('name', agent)}")
         return
-    
+
     process = active_processes[agent]
     try:
         process.terminate()
@@ -254,6 +259,7 @@ def kill_process(agent: str) -> None:
         if agent in active_processes:
             del active_processes[agent]
 
+
 def kill_pipeline(languages: List[str], platform: str = None, content_id: str = None) -> None:
     """Kill a running pipeline."""
     pipeline_key = f"pipeline_{'_'.join(languages)}_{platform}_{content_id}" if platform and content_id else f"pipeline_{'_'.join(languages)}"
@@ -261,14 +267,15 @@ def kill_pipeline(languages: List[str], platform: str = None, content_id: str = 
         logger.warning(f"No active pipeline for {pipeline_key}")
         print(f"No active pipeline for {pipeline_key}")
         return
-    
+
     for agent_id in active_pipelines[pipeline_key]:
         if agent_id in active_processes:
             kill_process(agent_id)
-    
+
     logger.info(f"Pipeline {pipeline_key} terminated")
     print(f"Pipeline {pipeline_key} terminated")
     del active_pipelines[pipeline_key]
+
 
 def view_analytics() -> None:
     """View engagement metrics."""
@@ -290,6 +297,7 @@ def view_analytics() -> None:
         logger.error(f"Failed to view analytics: {str(e)}")
         print(f"Error: Failed to view analytics: {str(e)}")
 
+
 def view_suggestions() -> None:
     """View strategy suggestions."""
     suggestions_path = os.path.join(ANALYTICS_DB_DIR, 'strategy_suggestions.json')
@@ -309,13 +317,14 @@ def view_suggestions() -> None:
         logger.error(f"Failed to view suggestions: {str(e)}")
         print(f"Error: Failed to view suggestions: {str(e)}")
 
+
 def restart_agent(agent: str, languages: List[str] = None, sentiment: str = 'neutral', platform: str = None, content_id: str = None, input_file: str = None) -> None:
     """Restart an agent."""
     if agent not in AGENTS:
         logger.error(f"Unknown agent: {agent}")
         print(f"Unknown agent: {agent}")
         return
-    
+
     if agent in active_processes:
         logger.info(f"Restarting {AGENTS[agent]['name']}...")
         print(f"Restarting {AGENTS[agent]['name']}...")
@@ -323,8 +332,9 @@ def restart_agent(agent: str, languages: List[str] = None, sentiment: str = 'neu
     else:
         logger.info(f"Starting {AGENTS[agent]['name']}...")
         print(f"Starting {AGENTS[agent]['name']}...")
-    
+
     run_agent(agent, languages, sentiment, platform, content_id, input_file)
+
 
 def restart_pipeline(languages: List[str], sentiment: str = 'neutral', platform: str = None, content_id: str = None, input_file: str = None) -> None:
     """Restart a pipeline."""
@@ -336,8 +346,9 @@ def restart_pipeline(languages: List[str], sentiment: str = 'neutral', platform:
     else:
         logger.info(f"Starting pipeline {pipeline_key}...")
         print(f"Starting pipeline {pipeline_key}...")
-    
+
     run_pipeline(languages, sentiment, platform, content_id, input_file)
+
 
 def list_agents() -> None:
     """List agents and pipelines."""
@@ -351,6 +362,7 @@ def list_agents() -> None:
             print(f"  {pipeline_key}: Agents: {', '.join(active_pipelines[pipeline_key])}")
     else:
         print("  No active pipelines")
+
 
 def main() -> None:
     """Main CLI function."""
@@ -387,7 +399,7 @@ def main() -> None:
         print("  python command_center.py suggest-strategy")
         print("  python command_center.py list")
         sys.exit(1)
-    
+
     command = sys.argv[1]
     args = sys.argv[2:]
     params = {}
@@ -408,7 +420,7 @@ def main() -> None:
         else:
             params['agent' if command in ['run', 'kill', 'restart'] else 'languages'] = args[i].split() if command == 'run-pipeline' else [args[i]]
             i += 1
-    
+
     if command == 'run':
         agent = params.get('agent', [''])[0]
         if not agent or agent not in AGENTS:
@@ -540,6 +552,7 @@ def main() -> None:
     else:
         print("Invalid command")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

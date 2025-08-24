@@ -18,10 +18,12 @@ logs_dir = r'E:\projects\vaani-sentinel-x\logs'
 os.makedirs(logs_dir, exist_ok=True)
 log_file = os.path.join(logs_dir, 'personalization_agent.txt')
 
+
 class UserContextFilter(logging.Filter):
     def filter(self, record):
         record.user = USER_ID
         return True
+
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -46,6 +48,7 @@ OUTPUT_BASE_DIR = os.path.join(os.path.dirname(__file__), '..', 'content', 'cont
 _voice_config_cache = None
 _user_profile_cache = None
 
+
 def load_json(file_path: str):
     """Load JSON file."""
     logger.debug(f"Loading JSON: {file_path}")
@@ -60,6 +63,7 @@ def load_json(file_path: str):
     except Exception as e:
         logger.error(f"Failed to load {file_path}: {str(e)}")
         raise
+
 
 def load_voice_config(config_path: str):
     """Load and cache voice configuration from JSON file."""
@@ -83,6 +87,7 @@ def load_voice_config(config_path: str):
                 "fallback_voice_for_language": "english_female_1"
             }
     return _voice_config_cache
+
 
 def load_user_profiles(profile_path: str):
     """Load and cache user profiles from JSON file."""
@@ -121,6 +126,7 @@ def load_user_profiles(profile_path: str):
             }
     return _user_profile_cache
 
+
 def get_voice_tag(language: str, tone: str, platform: str, config_path: str, input_voice_tag: str):
     """Retrieve voice tag for a language, tone, and platform, respecting input voice_tag."""
     config = load_voice_config(config_path)
@@ -128,6 +134,7 @@ def get_voice_tag(language: str, tone: str, platform: str, config_path: str, inp
     voice = tone_mapping.get(tone, config['default_voices_by_language'].get(language, input_voice_tag))
     logger.debug(f"Assigned voice_tag {voice} for language {language}, tone {tone}, platform {platform} (input voice_tag: {input_voice_tag})")
     return voice
+
 
 def clear_existing_content(content_id: str, platform: str, user_id: str):
     """Clear existing personalized content files for the given content_id, platform, and user_id."""
@@ -145,6 +152,7 @@ def clear_existing_content(content_id: str, platform: str, user_id: str):
     except Exception as e:
         logger.error(f"Error while clearing existing content: {str(e)}")
 
+
 # Configure Gemini API
 api_key = os.getenv('GOOGLE_GEMINI_API_KEY')
 if not api_key:
@@ -158,6 +166,7 @@ else:
     except Exception as e:
         logger.error(f"Failed to configure Gemini API: {str(e)}")
         model = None
+
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(60))
 def call_gemini_api(text: str, language: str, tone: str):
@@ -180,6 +189,7 @@ def call_gemini_api(text: str, language: str, tone: str):
         logger.error(f"Failed to personalize text for {language}, tone {tone}: {str(e)}")
         return text
 
+
 def get_output_path(content_id: str, platform: str, pipeline: str, language: str, user_id: str):
     """Generate output file path based on pipeline, language, and user."""
     return os.path.join(
@@ -188,6 +198,7 @@ def get_output_path(content_id: str, platform: str, pipeline: str, language: str
         language,
         f"personalized_{content_id}_{platform}_{user_id}.json"
     )
+
 
 def personalize_content(content_id: str, translations_file: str, config_path: str, profile_path: str, user_id: str, languages: list = None):
     """Personalize content for specified content ID and user, saving to pipeline/language directories."""
@@ -277,6 +288,7 @@ def personalize_content(content_id: str, translations_file: str, config_path: st
                 json.dump(entry, f, ensure_ascii=False, indent=2)
             logger.info(f"Saved personalized (fallback) content to {output_file}")
 
+
 def main():
     """Parse arguments and run personalization agent."""
     parser = argparse.ArgumentParser(description='Vaani Sentinel X: Personalization Agent')
@@ -295,6 +307,7 @@ def main():
         user_id=args.user_id,
         languages=languages
     )
+
 
 if __name__ == '__main__':
     main()

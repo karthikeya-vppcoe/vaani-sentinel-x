@@ -2,12 +2,10 @@ import json
 import sqlite3
 import os
 import logging
-import re
 import argparse
 from datetime import datetime, timedelta
 from typing import List, Dict
 import uuid
-import glob
 
 # === Logging Setup for Agent D (Scheduler) ===
 USER_ID = 'agent_d_user'
@@ -23,6 +21,7 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - User: %(user)s - %(
 file_handler.setFormatter(formatter)
 file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 logger.handlers = [file_handler, logging.StreamHandler()]
+
 
 class Scheduler:
     def __init__(self):
@@ -224,6 +223,7 @@ class Scheduler:
 
         logger.info("Completed scheduling.")
 
+
 def main() -> None:
     """Main function to run the scheduler."""
     parser = argparse.ArgumentParser(description="Run Agent D: Scheduler")
@@ -236,6 +236,7 @@ def main() -> None:
     scheduler = Scheduler()
     scheduler.run_scheduler(args.content_dir, args.tts_file, args.language)
     logger.info("Agent D Scheduler script finished.")
+
 
 if __name__ == "__main__":
     main()

@@ -17,6 +17,7 @@ file_handler.addFilter(lambda record: setattr(record, 'user', USER_ID) or True)
 logger.handlers = [file_handler, logging.StreamHandler()]
 logger.info("Initializing strategy_recommender.py")
 
+
 def calculate_score(stats: Dict) -> float:
     """Calculate a weighted score for a post."""
     weights = {
@@ -28,6 +29,7 @@ def calculate_score(stats: Dict) -> float:
         'views': 0.1
     }
     return sum(stats.get(key, 0) * weight for key, weight in weights.items())
+
 
 def adjust_future_content_strategy(input_path: str, output_path: str, languages: List[str] = ['en', 'hi', 'sa']) -> None:
     """Run Agent R: Strategy Recommender for Weekly Adaptive Hook."""
@@ -92,6 +94,7 @@ def adjust_future_content_strategy(input_path: str, output_path: str, languages:
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(suggestions, f, ensure_ascii=False, indent=2)
     logger.info(f"Saved {len(suggestions)} suggestions to {output_path}")
+
 
 if __name__ == "__main__":
     input_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'analytics_db', 'post_metrics.json')

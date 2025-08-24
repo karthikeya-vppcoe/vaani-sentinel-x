@@ -62,6 +62,7 @@ LANGUAGE_MAP = {
     'it': ('Italian', 'Latin')
 }
 
+
 def load_json(file_path: str) -> Dict:
     """Load JSON file."""
     logger.debug(f"Loading JSON: {file_path}")
@@ -76,6 +77,7 @@ def load_json(file_path: str) -> Dict:
     except Exception as e:
         logger.error(f"Failed to load {file_path}: {str(e)}")
         raise
+
 
 def validate_script(text: str, expected_script: str) -> bool:
     """Validate if text matches the expected script."""
@@ -94,11 +96,12 @@ def validate_script(text: str, expected_script: str) -> bool:
     logger.warning(f"Text '{text}' does not match expected script {expected_script}")
     return False
 
+
 def translate_text_with_gemini(text: str, target_lang: str, source_lang: str = 'en') -> tuple[str, float]:
     """Translate text using Gemini API with retry logic."""
     lang_name, script = LANGUAGE_MAP[target_lang]
     logger.debug(f"Translating text from {source_lang} to {lang_name} ({target_lang}) using Gemini API")
-    
+
     max_retries = 3
     base_backoff_seconds = 5
 
@@ -112,22 +115,22 @@ def translate_text_with_gemini(text: str, target_lang: str, source_lang: str = '
                 f"Return the output as a JSON object with two keys: 'translated_text' and 'confidence_score'.\n\n"
                 f"Text to translate: \"{text}\""
             )
-            
+
             response = model.generate_content(prompt)
             cleaned_response_text = response.text.strip().replace('```json', '').replace('```', '').strip()
             logger.debug(f"Gemini API raw response for {target_lang} (attempt {attempt + 1}): {cleaned_response_text}")
-            
+
             try:
                 translation_data = json.loads(cleaned_response_text)
                 translated_text = translation_data.get('translated_text', f"[{target_lang.upper()}] Error: Could not parse translation.")
                 confidence = float(translation_data.get('confidence_score', 0.0))
-                
+
                 # Validate script for non-Latin languages
                 if script != 'Latin' and not validate_script(translated_text, script):
                     logger.error(f"Invalid script for {lang_name} ({target_lang}): {translated_text}")
                     translated_text = f"[{target_lang.upper()}] Error: Incorrect script."
                     confidence = 0.0
-                
+
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse JSON for {target_lang} (attempt {attempt + 1}): {e}. Response: {cleaned_response_text}")
                 translated_text = f"[{target_lang.upper()}] Error: Malformed JSON response from API."
@@ -148,7 +151,7 @@ def translate_text_with_gemini(text: str, target_lang: str, source_lang: str = '
                     suggested_delay = int(match.group(1))
                     retry_delay_seconds = max(suggested_delay, retry_delay_seconds)
                     logger.info(f"API suggested retry_delay of {suggested_delay}s. Using {retry_delay_seconds}s.")
-                
+
                 logger.info(f"Retrying for {target_lang} in {retry_delay_seconds} seconds...")
                 time.sleep(retry_delay_seconds)
             else:
@@ -160,9 +163,10 @@ def translate_text_with_gemini(text: str, target_lang: str, source_lang: str = '
                 time.sleep(base_backoff_seconds)
                 continue
             return f"[{target_lang.upper()}] Error: API call failed.", 0.0
-    
+
     logger.error(f"Exited retry loop without success for {target_lang}.")
     return f"[{target_lang.upper()}] Error: API call failed after all retries.", 0.0
+
 
 def get_mapped_metadata(content_id: str, platform: str) -> Dict:
     """Load voice_tag and other metadata from language_mapper.py output."""
@@ -179,6 +183,7 @@ def get_mapped_metadata(content_id: str, platform: str) -> Dict:
         logger.error(f"Failed to load metadata {metadata_file}: {str(e)}")
         return {}
 
+
 def translate_content(content_id: str, platform: str) -> List[Dict]:
     """Translate content for all target languages."""
     logger.info(f"Translating content_id: {content_id} for platform: {platform}")
@@ -188,11 +193,11 @@ def translate_content(content_id: str, platform: str) -> List[Dict]:
         if os.path.exists(file_path):
             input_file = file_path
             break
-    
+
     if not input_file:
         logger.error(f"No input file found for content_id {content_id} and platform {platform}")
         raise FileNotFoundError(f"No input file found for content_id {content_id} and platform {platform}")
-    
+
     try:
         content = load_json(input_file)
         metadata = get_mapped_metadata(content_id, platform)
@@ -207,7 +212,7 @@ def translate_content(content_id: str, platform: str) -> List[Dict]:
         voice_tag = metadata.get('voice_tag', f"{source_language}_default")
         logger.debug(f"Using voice_tag: {voice_tag} for content_id: {content_id}, platform: {platform}")
         translations = []
-        
+
         for lang_idx, lang in enumerate(LANGUAGE_MAP.keys()):
             if lang == source_language:
                 translated_text = original_text
@@ -216,7 +221,7 @@ def translate_content(content_id: str, platform: str) -> List[Dict]:
                 translated_text, confidence = translate_text_with_gemini(original_text, lang, source_lang=source_language)
                 if lang_idx < len(LANGUAGE_MAP) - 1:
                     time.sleep(1)
-            
+
             translation_entry = {
                 'content_id': content_id,
                 'platform': platform,
@@ -232,29 +237,30 @@ def translate_content(content_id: str, platform: str) -> List[Dict]:
             }
             translations.append(translation_entry)
             logger.info(f"Translated to {lang} with confidence {confidence}")
-        
+
         return translations
     except Exception as e:
         logger.error(f"Failed to translate content_id {content_id}: {str(e)}")
         raise
+
 
 def save_translations(translations: List[Dict], content_id: str, platform: str) -> None:
     """Save translations to a JSON file, appending to existing data."""
     output_file = os.path.join(OUTPUT_DIR, f"translated_content_{content_id}_{platform}.json")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     existing_translations = []
-    
+
     try:
         if os.path.exists(output_file):
             with open(output_file, 'r', encoding='utf-8') as f:
                 existing_translations = json.load(f)
             logger.info(f"Loaded existing translations from {output_file}")
-        
+
         # Append new translations, avoiding duplicates
         existing_keys = {(t['content_id'], t['platform'], t['language']) for t in existing_translations}
         new_translations = [t for t in translations if (t['content_id'], t['platform'], t['language']) not in existing_keys]
         existing_translations.extend(new_translations)
-        
+
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(existing_translations, f, ensure_ascii=False, indent=2)
         logger.info(f"Saved translations to {output_file}")
@@ -262,15 +268,17 @@ def save_translations(translations: List[Dict], content_id: str, platform: str) 
         logger.error(f"Failed to save translations to {output_file}: {str(e)}")
         raise
 
+
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Vaani Sentinel X: Translation Agent")
     parser.add_argument('--content_id', required=True, help="Content ID to translate")
     parser.add_argument('--platform', default='instagram', choices=['twitter', 'instagram', 'linkedin', 'sanatan'], help="Platform")
     args = parser.parse_args()
-    
+
     translations = translate_content(args.content_id, args.platform)
     save_translations(translations, args.content_id, args.platform)
+
 
 if __name__ == "__main__":
     main()

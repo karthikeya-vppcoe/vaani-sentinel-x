@@ -58,6 +58,7 @@ VALID_PIPELINES = {
 PLATFORMS = ['twitter', 'instagram', 'linkedin', 'sanatan']
 ALLOWED_SENTIMENTS = ['uplifting', 'neutral', 'devotional']
 
+
 def validate_pipelines() -> None:
     """Validate that all pipelines in PIPELINES are defined in VALID_PIPELINES."""
     for lang, pipeline in PIPELINES.items():
@@ -65,6 +66,7 @@ def validate_pipelines() -> None:
             logger.error(f"Invalid pipeline '{pipeline}' for language '{lang}'")
             raise ValueError(f"Pipeline '{pipeline}' not defined in VALID_PIPELINES")
     logger.info("All pipelines validated successfully")
+
 
 def load_content_blocks(input_dir: str) -> List[Dict]:
     """Load the latest content_blocks_*.json file."""
@@ -83,6 +85,7 @@ def load_content_blocks(input_dir: str) -> List[Dict]:
         logger.error(f"Failed to load content blocks: {str(e)}")
         return []
 
+
 def clear_output_directory(output_dir: str) -> None:
     """Clear existing files in output directory."""
     try:
@@ -96,6 +99,7 @@ def clear_output_directory(output_dir: str) -> None:
     except Exception as e:
         logger.error(f"Failed to clear output directory {output_dir}: {str(e)}")
         raise
+
 
 def detect_language(text: str) -> str:
     """Detect language with fallback to 'en' for unsupported languages."""
@@ -113,6 +117,7 @@ def detect_language(text: str) -> str:
         logger.error(f"Language detection failed: {str(e)}, defaulting to 'en'")
         return 'en'
 
+
 def route_content_block(block: Dict, pipeline: str, platform: str, sentiment: str, output_dir: str) -> None:
     """Route a content block to a pipeline and platform."""
     content_id = block['content_id']
@@ -120,7 +125,7 @@ def route_content_block(block: Dict, pipeline: str, platform: str, sentiment: st
     text = block['post']
     text_preview = text[:50].replace('\n', ' ') + '...' if len(text) > 50 else text
     preferred_tone = block['platform_tones'].get(platform, 'neutral')
-    
+
     output_data = {
         'content_id': content_id,
         'post': text,
@@ -136,7 +141,7 @@ def route_content_block(block: Dict, pipeline: str, platform: str, sentiment: st
         'type': block.get('type', 'unknown'),
         'processed_at': datetime.now(timezone.utc).isoformat()
     }
-    
+
     pipeline_dir = os.path.join(output_dir, pipeline)
     try:
         os.makedirs(pipeline_dir, exist_ok=True)
@@ -151,48 +156,49 @@ def route_content_block(block: Dict, pipeline: str, platform: str, sentiment: st
         logger.error(f"Failed to route block ID {content_id}: {str(e)}")
         raise
 
+
 def run_multilingual_pipeline(languages: List[str] = None, platforms: List[str] = None, sentiment: str = 'neutral') -> None:
     """Run Agent F: Multilingual Pipeline."""
     if sentiment not in ALLOWED_SENTIMENTS:
         logger.error(f"Invalid sentiment: {sentiment}. Supported: {', '.join(ALLOWED_SENTIMENTS)}")
         raise ValueError(f"Invalid sentiment: {sentiment}")
-    
+
     if platforms:
         invalid_platforms = [p for p in platforms if p not in PLATFORMS]
         if invalid_platforms:
             logger.error(f"Invalid platforms: {invalid_platforms}. Supported: {', '.join(PLATFORMS)}")
             raise ValueError(f"Invalid platforms: {invalid_platforms}")
-    
+
     if languages:
-        invalid_languages = [l for l in languages if l not in SUPPORTED_LANGUAGES]
+        invalid_languages = [lang for lang in languages if lang not in SUPPORTED_LANGUAGES]
         if invalid_languages:
             logger.error(f"Invalid languages: {invalid_languages}. Supported: {', '.join(SUPPORTED_LANGUAGES)}")
             raise ValueError(f"Invalid languages: {invalid_languages}")
-    
+
     logger.info(f"Starting Agent F: Multilingual Pipeline (sentiment: {sentiment})")
-    
+
     # Validate pipelines
     validate_pipelines()
-    
+
     # File paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     input_dir = os.path.join(script_dir, '..', 'content', 'structured')
     output_dir = os.path.join(script_dir, '..', 'content', 'multilingual_ready')
-    
+
     # Clear output directory
     clear_output_directory(output_dir)
-    
+
     # Load content blocks
     content_blocks = load_content_blocks(input_dir)
     if not content_blocks:
         logger.error("No content blocks loaded, exiting")
         return
-    
+
     # Filter by languages
     if languages:
         content_blocks = [block for block in content_blocks if block['source_language'] in languages]
         logger.info(f"Filtered to {len(content_blocks)} blocks for languages: {', '.join(languages)}")
-    
+
     # Route blocks
     platforms = platforms or PLATFORMS
     language_counts = {lang: 0 for lang in SUPPORTED_LANGUAGES}
@@ -201,32 +207,33 @@ def run_multilingual_pipeline(languages: List[str] = None, platforms: List[str] 
         content_id = block['content_id']
         text = block['post']
         block_sentiment = block.get('sentiment', 'neutral')
-        
+
         if not text.strip():
             logger.warning(f"Skipping block ID {content_id} due to empty or whitespace-only text")
             continue
-        
+
         if block_sentiment != sentiment:
             logger.warning(f"Skipping block ID {content_id} due to sentiment mismatch (block: {block_sentiment}, required: {sentiment})")
             continue
-        
+
         if not source_language or source_language not in SUPPORTED_LANGUAGES:
             logger.warning(f"Invalid or missing language '{source_language}' for block ID {content_id}, detecting language")
             source_language = detect_language(text)
             block['source_language'] = source_language
-        
+
         if languages and source_language not in languages:
             logger.info(f"Skipping block ID {content_id} (language: {source_language}) as it does not match selected languages")
             continue
-        
+
         pipeline = PIPELINES.get(source_language, 'latin_pipeline')
         for platform in platforms:
             route_content_block(block, pipeline, platform, sentiment, output_dir)
             language_counts[source_language] += 1
-    
+
     for lang, count in language_counts.items():
         if count > 0:
             logger.info(f"Routed {count} blocks to {lang} pipeline")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vaani Sentinel X: Multilingual Pipeline")
@@ -234,5 +241,5 @@ if __name__ == "__main__":
     parser.add_argument('--platforms', nargs='+', choices=PLATFORMS, help="Platforms to route to (e.g., twitter instagram linkedin sanatan)")
     parser.add_argument('--sentiment', choices=ALLOWED_SENTIMENTS, default='neutral', help="Sentiment for processing (uplifting, neutral, devotional)")
     args = parser.parse_args()
-    
+
     run_multilingual_pipeline(args.languages, args.platforms, args.sentiment)

@@ -30,6 +30,7 @@ METADATA_OUTPUT_DIR = os.path.join(STRUCTURED_DIR, 'metadata')
 # Supported platforms
 PLATFORMS = ['instagram', 'linkedin', 'twitter', 'sanatan']
 
+
 def load_config(file_path: str) -> Dict:
     """Load JSON configuration file."""
     logger.debug(f"Attempting to load config: {file_path}")
@@ -45,6 +46,7 @@ def load_config(file_path: str) -> Dict:
         logger.error(f"Failed to load {file_path}: {str(e)}")
         raise
 
+
 def get_user_preferences(user_id: str, profiles: List[Dict]) -> Optional[Dict]:
     """Retrieve user language preferences by user_id."""
     logger.debug(f"Searching for user_id: {user_id}")
@@ -54,6 +56,7 @@ def get_user_preferences(user_id: str, profiles: List[Dict]) -> Optional[Dict]:
             return profile
     logger.warning(f"No profile found for user_id: {user_id}")
     return None
+
 
 def select_content_language(user_prefs: Dict, content_lang: str, available_langs: List[str]) -> str:
     """Select the best language from user preferences and available content languages."""
@@ -69,6 +72,7 @@ def select_content_language(user_prefs: Dict, content_lang: str, available_langs
     logger.info(f"No matching language found, using default: {default_lang}")
     return default_lang
 
+
 def get_voice_tag(language: str, tone: str, voice_map: Dict) -> str:
     """Map language and tone to TTS voice tag, with fallback."""
     logger.debug(f"Mapping voice for language: {language}, tone: {tone}")
@@ -79,6 +83,7 @@ def get_voice_tag(language: str, tone: str, voice_map: Dict) -> str:
         voice_tag = tone_mapping.get(voice_map['fallback_voice_for_tone'], voice_map['default_voices_by_language'].get(language, voice_map['fallback_voice_for_language']))
     logger.info(f"Assigned voice tag: {voice_tag} for language: {language}, tone: {tone}")
     return voice_tag
+
 
 def find_content_file(content_id: str, platform: str, content_dir: str = CONTENT_DIR) -> Optional[str]:
     """Search for content file in multilingual_ready/<pipeline>/<content_id>_<platform>.json."""
@@ -93,22 +98,23 @@ def find_content_file(content_id: str, platform: str, content_dir: str = CONTENT
     logger.error(f"Content file for ID {content_id}, platform {platform} not found in {content_dir}")
     return None
 
+
 def enhance_metadata(content: Dict, user_id: str, platform: str, voice_map: Dict, user_prefs: Dict) -> Dict:
     """Enhance content metadata with language and voice tags."""
     logger.info(f"Enhancing metadata for content_id: {content['content_id']}, user_id: {user_id}, platform: {platform}")
     content_language = content.get('content_language', content.get('source_language', 'en'))
     preferred_tone = content.get('preferred_tone', 'neutral')
-    
+
     # Available content languages (from pipeline directories)
     content_langs = [content.get('content_language')]  # Use provided content language
     logger.debug(f"Available content languages: {content_langs}")
-    
+
     # Select content language
     selected_language = select_content_language(user_prefs, content_language, content_langs)
-    
+
     # Get voice tag based on language and tone
     voice_tag = get_voice_tag(selected_language, preferred_tone, voice_map)
-    
+
     # Enhanced metadata
     enhanced_metadata = {
         'content_id': content['content_id'],
@@ -127,6 +133,7 @@ def enhance_metadata(content: Dict, user_id: str, platform: str, voice_map: Dict
     logger.info(f"Generated metadata: {enhanced_metadata}")
     return enhanced_metadata
 
+
 def save_metadata(metadata: Dict, output_dir: str = METADATA_OUTPUT_DIR) -> None:
     """Save enhanced metadata to JSON file."""
     logger.debug(f"Saving metadata to {output_dir}")
@@ -139,6 +146,7 @@ def save_metadata(metadata: Dict, output_dir: str = METADATA_OUTPUT_DIR) -> None
     except Exception as e:
         logger.error(f"Failed to save metadata to {output_file}: {str(e)}")
         raise
+
 
 def process_content(content_id: str, user_id: str, platform: str) -> Dict:
     """Process content to enhance metadata for a user and platform."""
@@ -170,6 +178,7 @@ def process_content(content_id: str, user_id: str, platform: str) -> Dict:
 
     return metadata
 
+
 def main():
     """Main function for running language mapper."""
     parser = argparse.ArgumentParser(description="Vaani Sentinel X: Language Mapper")
@@ -177,7 +186,7 @@ def main():
     parser.add_argument('--user_id', default='default', help="User ID for preferences")
     parser.add_argument('--platform', default='instagram', choices=PLATFORMS, help="Platform")
     args = parser.parse_args()
-    
+
     logger.info("Starting language_mapper.py")
     try:
         metadata = process_content(args.content_id, args.user_id, args.platform)
@@ -187,6 +196,7 @@ def main():
         logger.error(f"Error in main: {str(e)}")
         print(f"Error: {str(e)}")
     logger.info("Completed language_mapper.py")
+
 
 if __name__ == "__main__":
     main()

@@ -35,6 +35,7 @@ logger.handlers = [file_handler, logging.StreamHandler()]
 SUPPORTED_LANGUAGES = ['en', 'hi', 'sa']
 SUPPORTED_PLATFORMS = ['instagram', 'twitter', 'linkedin', 'sanatan']
 
+
 def clean_text_for_tts(text: str) -> str:
     """Remove emojis and invalid characters for TTS."""
     emoji_pattern = re.compile(
@@ -53,6 +54,7 @@ def clean_text_for_tts(text: str) -> str:
         flags=re.UNICODE
     )
     return emoji_pattern.sub(r'', text).strip()
+
 
 def standardize_formatting(text: str, language: str) -> str:
     """Standardize formatting and punctuation across languages."""
@@ -75,6 +77,7 @@ def standardize_formatting(text: str, language: str) -> str:
     if language == 'en':
         text = text.replace('ai', 'AI').replace('internet things', 'Internet of Things')
     return text
+
 
 def correct_grammar(text: str, language: str) -> str:
     """Correct common grammatical errors."""
@@ -102,6 +105,7 @@ def correct_grammar(text: str, language: str) -> str:
         text = re.sub(r'सद्गुरोरन्रहेण', 'सद्गुरोरनुग्रहेण', text)
     return text
 
+
 def reduce_repetition(text: str) -> str:
     """Reduce repetitive phrases."""
     separator = '।' if '।' in text else ('॥' if '॥' in text else '.')
@@ -116,6 +120,7 @@ def reduce_repetition(text: str) -> str:
         elif line:
             logger.warning(f"Removed repetitive line: {line}")
     return f'{separator} '.join(unique_lines).strip()
+
 
 def clean_generated_content(content: str, language: str) -> str:
     """Clean content, removing hashtags, commentary, and non-target language text."""
@@ -139,11 +144,13 @@ def clean_generated_content(content: str, language: str) -> str:
         content = re.sub(r'(\b\w+\b)\s*\1+', r'\1', content)
     return content
 
+
 def estimate_word_count(text: str, language: str) -> int:
     """Estimate word count for content length validation."""
     if language in ['hi', 'sa']:
         return len(re.findall(r'[\u0900-\u097F]+', text))
     return len(text.split())
+
 
 def truncate_to_word_limit(text: str, language: str, max_words: int) -> str:
     """Truncate text to max word count, preserving sentence integrity."""
@@ -163,6 +170,7 @@ def truncate_to_word_limit(text: str, language: str, max_words: int) -> str:
             break
     truncated = f'{separator} '.join(truncated_sentences).strip()
     return standardize_formatting(truncated + (separator if truncated else ''), language)
+
 
 def pad_to_word_limit(text: str, language: str, min_words: int, content_type: str, platform: str) -> str:
     """Pad text to minimum word count with context-aware content."""
@@ -201,6 +209,7 @@ def pad_to_word_limit(text: str, language: str, min_words: int, content_type: st
         current_count = estimate_word_count(text, language)
     return standardize_formatting(text, language)
 
+
 def get_sanskrit_fallback(text: str, content_type: str, platform: str) -> str:
     """Generate context-aware Sanskrit fallback for short/repetitive content."""
     fallbacks = {
@@ -232,6 +241,7 @@ def get_sanskrit_fallback(text: str, content_type: str, platform: str) -> str:
     key = 'sun' if 'सूर्य' in text or 'sun' in text.lower() else 'shiva' if 'शिव' in text or 'shiva' in text.lower() else 'default'
     return fallbacks[key][content_type].get(platform, fallbacks[key][content_type]) if content_type == 'post' else fallbacks[key][content_type]
 
+
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 async def generate_content(text: str, content_type: str, tone: str, language: str, sentiment: str, platform: str, client: AsyncGroq = None) -> Dict:
     """Generate content with specified tone, sentiment, and platform using Groq."""
@@ -262,17 +272,17 @@ async def generate_content(text: str, content_type: str, tone: str, language: st
     }
     min_words, max_words = word_limits[content_type][platform]
     prompt = f"{tone_prompts.get(tone, '')} {sentiment_prompts.get(sentiment, '')} {language_instructions.get(language, '')} Create a {content_type} for {platform} based on: {text}. Ensure the content is between {min_words} and {max_words} words."
-    
+
     # Log input parameters for debugging
     logger.debug(f"Generating content: content_type={content_type}, tone={tone}, lang={language}, platform={platform}, prompt={prompt[:100]}...")
-    
+
     if not client:
         logger.info(f"No Groq client, using fallback text for {content_type} (tone: {tone}, lang: {language}, platform: {platform})")
         content = text if content_type == 'post' else get_sanskrit_fallback(text, content_type, platform) if language == 'sa' else text
         content = truncate_to_word_limit(content, language, max_words)
         content = pad_to_word_limit(content, language, min_words, content_type, platform)
         return {'content': content, 'tone': tone, 'sentiment': sentiment, 'language': language}
-    
+
     try:
         max_tokens = 300 if content_type == 'post' else 500
         response = await client.chat.completions.create(
@@ -310,6 +320,8 @@ async def generate_content(text: str, content_type: str, tone: str, language: st
         return result
 
 # Replace the process_content_blocks function in ai_writer_voicegen.py with this version
+
+
 async def process_content_blocks(blocks: List[Dict], output_dir: str, language: str, content_id: str, platforms: List[str], client: AsyncGroq = None) -> List[Dict]:
     """Process content blocks for multiple platforms."""
     tts_simulations = []  # Keep for compatibility but won't save
@@ -318,13 +330,13 @@ async def process_content_blocks(blocks: List[Dict], output_dir: str, language: 
         text = block.get('sentiment_tuned_text', block.get('personalized_text', ''))
         sentiment = block.get('sentiment', 'uplifting')
         voice_tag = block.get('voice_tag', f"{language}_female_casual_1")
-        
+
         if not text:
             logger.warning(f"Missing sentiment_tuned_text or personalized_text for ID {block_id}, skipping")
             continue
         if not voice_tag:
             logger.warning(f"Missing voice_tag for ID {block_id}, using default: {voice_tag}")
-        
+
         for platform in platforms:
             try:
                 if platform in ['instagram', 'twitter', 'linkedin']:
@@ -352,7 +364,7 @@ async def process_content_blocks(blocks: List[Dict], output_dir: str, language: 
                     with open(post_path, 'w', encoding='utf-8') as f:
                         json.dump(post_entry, f, ensure_ascii=False, indent=2)
                     logger.info(f"Generated {platform} post for ID {block_id} at {post_path}")
-                
+
                 elif platform == 'sanatan':
                     voice_data = await generate_content(text, 'voice_script', 'devotional', language, sentiment, platform, client)
                     if not isinstance(voice_data, dict):
@@ -393,13 +405,14 @@ async def process_content_blocks(blocks: List[Dict], output_dir: str, language: 
                     }
                     tts_simulations.append(tts_simulation)
                     logger.info(f"Simulated TTS for ID {block_id} at {tts_path} (voice: {voice_tag})")
-            
+
             except Exception as e:
                 logger.error(f"Failed to process block {block_id} for {platform} (text: {text[:50]}...): {str(e)}")
                 continue
-    
+
     # Do not save tts_simulations to avoid redundancy
     return tts_simulations
+
 
 def validate_block(block: Dict, language: str) -> bool:
     """Validate block schema."""
@@ -409,6 +422,7 @@ def validate_block(block: Dict, language: str) -> bool:
             logger.warning(f"Missing field '{field}' in block for language {language}")
             return False
     return True
+
 
 def load_blocks(input_dir: str, language: str, content_id: str) -> List[Dict]:
     """Load personalized content from content_ready."""
@@ -426,6 +440,7 @@ def load_blocks(input_dir: str, language: str, content_id: str) -> List[Dict]:
         except Exception as e:
             logger.error(f"Failed to load {block_file}: {str(e)}")
     return blocks
+
 
 def clear_old_data(output_base_dir: str, language: str, content_id: str, platforms: List[str]) -> None:
     """Remove old output files for the given content_id, language, and platforms."""
@@ -446,6 +461,7 @@ def clear_old_data(output_base_dir: str, language: str, content_id: str, platfor
             except Exception as e:
                 logger.error(f"Failed to remove old file {file}: {str(e)}")
 
+
 def validate_platforms(platforms: List[str]) -> List[str]:
     """Validate and return supported platforms."""
     valid_platforms = [platform for platform in platforms if platform in SUPPORTED_PLATFORMS]
@@ -454,6 +470,7 @@ def validate_platforms(platforms: List[str]) -> List[str]:
         logger.warning(f"Invalid platforms ignored: {', '.join(invalid_platforms)}. Supported platforms: {', '.join(SUPPORTED_PLATFORMS)}")
     return valid_platforms
 
+
 def validate_languages(languages: List[str]) -> List[str]:
     """Validate and return supported languages."""
     valid_languages = [lang for lang in languages if lang in SUPPORTED_LANGUAGES]
@@ -461,6 +478,7 @@ def validate_languages(languages: List[str]) -> List[str]:
     if invalid_languages:
         logger.warning(f"Unsupported languages ignored: {', '.join(invalid_languages)}. Supported languages: {', '.join(SUPPORTED_LANGUAGES)}")
     return valid_languages
+
 
 async def process_language(lang: str, input_base_dir: str, output_base_dir: str, content_id: str, platforms: List[str], client: AsyncGroq = None) -> None:
     """Process a single language for multiple platforms."""
@@ -473,18 +491,19 @@ async def process_language(lang: str, input_base_dir: str, output_base_dir: str,
     else:
         logger.warning(f"No blocks found for language {lang} and content_id {content_id}")
 
+
 async def run_ai_writer_voicegen_async(content_id: str, platforms: List[str], user_id: str, sentiment: str, languages: List[str]) -> None:
     """Run Agent G: Adaptive AI Writer & Voice Generator for multiple platforms."""
     valid_platforms = validate_platforms(platforms)
     valid_languages = validate_languages(languages)
-    
+
     if not valid_platforms:
         logger.error("No valid platforms provided. Exiting.")
         return
     if not valid_languages:
         logger.error("No valid languages provided. Exiting.")
         return
-    
+
     logger.info(f"Starting Agent G for content_id: {content_id}, platforms: {valid_platforms}, user_id: {user_id}, sentiment: {sentiment}, languages: {valid_languages}")
     client = None
     try:
@@ -492,10 +511,10 @@ async def run_ai_writer_voicegen_async(content_id: str, platforms: List[str], us
             client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
         else:
             logger.warning("GROQ_API_KEY not set, running in fallback mode")
-        
+
         input_base_dir = os.path.join(script_dir, '..', 'content', 'content_ready')
         output_base_dir = os.path.join(script_dir, '..', 'content', 'content_final')
-        
+
         tasks = [process_language(lang, input_base_dir, output_base_dir, content_id, valid_platforms, client) for lang in valid_languages]
         await asyncio.gather(*tasks)
     except Exception as e:
@@ -505,8 +524,9 @@ async def run_ai_writer_voicegen_async(content_id: str, platforms: List[str], us
         if client:
             await client.close()
             logger.info("Groq API client closed successfully")
-    
+
     logger.info(f"Completed AI writing and voice generation for content_id {content_id}")
+
 
 def run_ai_writer_voicegen() -> None:
     """Wrapper to run the async function with CLI arguments."""
@@ -517,10 +537,11 @@ def run_ai_writer_voicegen() -> None:
     parser.add_argument('--sentiment', choices=['uplifting', 'neutral', 'devotional'], default='neutral', help='Sentiment to apply')
     parser.add_argument('--languages', help='Comma-separated list of languages (e.g., en,hi,sa)', default='en,hi,sa')
     args = parser.parse_args()
-    
+
     platforms = args.platforms.split(',')
     languages = args.languages.split(',')
     asyncio.run(run_ai_writer_voicegen_async(args.content_id, platforms, args.user_id, args.sentiment, languages))
+
 
 if __name__ == "__main__":
     run_ai_writer_voicegen()

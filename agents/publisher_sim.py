@@ -5,7 +5,6 @@ import json
 import jwt
 import re
 import argparse
-import requests
 import time
 import uuid
 import shutil
@@ -35,6 +34,7 @@ SCHEDULED_POSTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '.
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scheduler_db', 'scheduled_posts.db'))
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key')
 
+
 def load_json(file_path: str) -> Dict:
     """Load JSON file."""
     logger.debug(f"Loading JSON: {file_path}")
@@ -47,6 +47,7 @@ def load_json(file_path: str) -> Dict:
     except Exception as e:
         logger.error(f"Failed to load {file_path}: {str(e)}")
         return {}
+
 
 def get_content_file(content_id: str, content_type: str, lang: str, platform: str) -> str:
     """Find the content file with precise pattern matching."""
@@ -62,6 +63,7 @@ def get_content_file(content_id: str, content_type: str, lang: str, platform: st
     except FileNotFoundError:
         logger.warning(f"Content directory {lang_dir} not found")
     return ''
+
 
 def get_audio_file(content_id: str, lang: str, platform: str, tts_data: List[Dict]) -> str:
     """Find the audio file or dummy_audio_path for a given content ID, language, and platform."""
@@ -83,6 +85,7 @@ def get_audio_file(content_id: str, lang: str, platform: str, tts_data: List[Dic
         logger.warning(f"Content directory {lang_dir} not found")
     return ''
 
+
 def load_translated_content(content_id: str, lang: str) -> Dict:
     """Load translated content for a given content ID and language."""
     try:
@@ -100,6 +103,7 @@ def load_translated_content(content_id: str, lang: str) -> Dict:
         logger.warning(f"Failed to load translated content: {str(e)}, falling back to original content")
         return {}
 
+
 def load_tts_content() -> List[Dict]:
     """Load TTS content from tts_simulation_output.json."""
     try:
@@ -112,6 +116,7 @@ def load_tts_content() -> List[Dict]:
     except Exception as e:
         logger.warning(f"Failed to load TTS content from {TTS_FILE}: {str(e)}")
         return []
+
 
 def generate_jwt_token() -> str:
     """Generate a JWT token for authentication."""
@@ -127,6 +132,7 @@ def generate_jwt_token() -> str:
     except Exception as e:
         logger.error(f"Failed to generate JWT token: {str(e)}")
         raise
+
 
 def format_content(content: Dict, content_type: str, platform: str, audio_file: str, lang: str, translation: Dict = None, tts_item: Dict = None) -> Dict:
     """Format content for platform-specific posting, using translation and TTS data."""
@@ -174,6 +180,7 @@ def format_content(content: Dict, content_type: str, platform: str, audio_file: 
 
     return post_data
 
+
 def publish_to_platform(platform: str, content: Dict, content_type: str, audio_file: str, token: str, preview_mode: bool, lang: str, translation: Dict = None, tts_item: Dict = None) -> bool:
     """Simulate publishing content to a platform, using translation and TTS data."""
     try:
@@ -182,14 +189,17 @@ def publish_to_platform(platform: str, content: Dict, content_type: str, audio_f
         content_text = post_data['content'] if isinstance(post_data['content'], str) else json.dumps(post_data['content'])
 
         if not preview_mode:
-            endpoint = f'http://localhost:5000/{platform}/post'
-            headers = {'Authorization': f'Bearer {token}'}
-            payload = {'contentId': content_id}
-            
+            # Simulate API call (not actually making requests in simulation mode)
+            simulated_endpoint = f'http://localhost:5000/{platform}/post'
+            simulated_headers = {'Authorization': f'Bearer {token}'}
+            simulated_payload = {'contentId': content_id}
+
+            logger.debug(f"Simulated API details - Endpoint: {simulated_endpoint}, Headers: {simulated_headers}, Payload: {simulated_payload}")
+
             simulated_response = {'status_code': 200, 'text': 'Success'} if platform in ['twitter', 'instagram', 'linkedin', 'sanatan'] else {'status_code': 500, 'text': 'Failed'}
 
             if simulated_response['status_code'] == 200:
-                logger.info(f"Simulated POST to {platform} for content ID {content_id}: {content_text[:50]}...")
+                logger.info(f"Simulated POST to {simulated_endpoint} for content ID {content_id}: {content_text[:50]}...")
                 post_data['status'] = 'success'
             else:
                 logger.error(f"Failed POST to {platform} for content ID {content_id}: {simulated_response['text']}")
@@ -210,6 +220,7 @@ def publish_to_platform(platform: str, content: Dict, content_type: str, audio_f
         logger.error(f"Failed to publish {content_type} to {platform}: {str(e)}")
         return False
 
+
 def update_status(content_id: str, platform: str, lang: str, status: str) -> None:
     """Update the status of a scheduled post."""
     try:
@@ -224,6 +235,7 @@ def update_status(content_id: str, platform: str, lang: str, status: str) -> Non
         logger.info(f"Updated status to {status} for content ID {content_id} on {platform} (lang: {lang})")
     except Exception as e:
         logger.error(f"Failed to update status for content ID {content_id} on {platform} (lang: {lang}): {str(e)}")
+
 
 def fetch_due_posts(selected_language: str) -> List[Tuple[str, str, str, str]]:
     """Fetch posts that are due for publishing."""
@@ -245,6 +257,7 @@ def fetch_due_posts(selected_language: str) -> List[Tuple[str, str, str, str]]:
         logger.error(f"Failed to fetch due posts: {str(e)}")
     return due_posts
 
+
 def publish_content(content_id: str, platform: str, content_type: str, token: str, lang: str, preview_mode: bool, tts_data: List[Dict]) -> bool:
     """Publish content to the specified platform."""
     content_file = get_content_file(content_id, content_type, lang, platform)
@@ -256,13 +269,13 @@ def publish_content(content_id: str, platform: str, content_type: str, token: st
         content = load_json(content_file)
         translation = load_translated_content(content_id, lang)
         tts_item = next((item for item in tts_data if item.get('content_id') == content_id and item.get('language') == lang and item.get('platform') == platform), None)
-        
+
         audio_file = get_audio_file(content_id, lang, platform, tts_data) if content_type == 'voice_script' else ''
         if content_type == 'voice_script' and platform == 'sanatan' and not audio_file:
             logger.error(f"No audio file found for voice_script content ID {content_id} on {platform} (lang: {lang})")
             update_status(content_id, platform, lang, 'failed')
             return False
-        
+
         if publish_to_platform(platform, content, content_type, audio_file, token, preview_mode, lang, translation, tts_item):
             update_status(content_id, platform, lang, 'published' if not preview_mode else 'preview')
             return True
@@ -274,12 +287,13 @@ def publish_content(content_id: str, platform: str, content_type: str, token: st
         update_status(content_id, platform, lang, 'failed')
         return False
 
+
 def generate_multilingual_previews(content_id: str, content_type: str = 'post') -> List[Dict]:
     """Generate 5 multilingual post previews for different languages and platforms."""
     logger.info(f"Generating multilingual previews for content_id: {content_id}")
     token = generate_jwt_token()
     tts_data = load_tts_content()
-    
+
     preview_configs = [
         {'lang': 'en', 'platform': 'instagram', 'content_type': 'post'},
         {'lang': 'hi', 'platform': 'linkedin', 'content_type': 'post'},
@@ -287,24 +301,24 @@ def generate_multilingual_previews(content_id: str, content_type: str = 'post') 
         {'lang': 'mr', 'platform': 'instagram', 'content_type': 'post'},
         {'lang': 'ta', 'platform': 'linkedin', 'content_type': 'post'}
     ]
-    
+
     previews = []
     for config in preview_configs:
         lang = config['lang']
         platform = config['platform']
         content_type = config['content_type']
-        
+
         content_file = get_content_file(content_id, content_type, lang, platform)
         if not content_file:
             logger.warning(f"No content file for preview: content_id={content_id}, lang={lang}, platform={platform}")
             continue
-        
+
         content = load_json(content_file)
         translation = load_translated_content(content_id, lang)
         tts_item = next((item for item in tts_data if item.get('content_id') == content_id and item.get('language') == lang and item.get('platform') == platform), None)
-        
+
         audio_file = get_audio_file(content_id, lang, platform, tts_data) if content_type == 'voice_script' else ''
-        
+
         success = publish_to_platform(platform, content, content_type, audio_file, token, preview_mode=True, lang=lang, translation=translation, tts_item=tts_item)
         if success:
             for filename in os.listdir(SCHEDULED_POSTS_DIR):
@@ -314,14 +328,15 @@ def generate_multilingual_previews(content_id: str, content_type: str = 'post') 
                     previews.append(post_data)
                     logger.info(f"Added preview for {lang} on {platform}")
                     break
-    
+
     logger.info(f"Generated {len(previews)} multilingual previews for content_id: {content_id}")
     return previews
+
 
 def run_publisher_sim(selected_language: str, preview_mode: bool = False, max_attempts: int = 3) -> None:
     """Run Agent J: Platform Publisher."""
     logger.info(f"Starting Agent J: Platform Publisher for language: {selected_language} (preview_mode: {preview_mode})")
-    
+
     if os.path.exists(SCHEDULED_POSTS_DIR):
         shutil.rmtree(SCHEDULED_POSTS_DIR)
         logger.info(f"Cleared scheduled_posts directory: {SCHEDULED_POSTS_DIR}")
@@ -350,6 +365,7 @@ def run_publisher_sim(selected_language: str, preview_mode: bool = False, max_at
     if not processed_posts:
         logger.warning(f"No posts processed after {max_attempts} attempts for language {selected_language}")
 
+
 def main() -> None:
     """Main function to run the publisher simulator."""
     parser = argparse.ArgumentParser(description="Run Agent J: Platform Publisher")
@@ -371,6 +387,7 @@ def main() -> None:
             parser.print_help()
             return
         run_publisher_sim(args.language, args.preview)
+
 
 if __name__ == "__main__":
     main()
